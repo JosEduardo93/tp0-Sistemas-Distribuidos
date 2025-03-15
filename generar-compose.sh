@@ -17,5 +17,5 @@ AMOUNT_CLIENTS=$2
 
 # Crear el archivo docker-compose.yaml
 echo "Generando archivo docker compose: $FILENAME con $AMOUNT_CLIENTS clientes..."
-python3 generar-compose.py $FILENAME $AMOUNT_CLIENTS
+python3 generator-compose.py $FILENAME $AMOUNT_CLIENTS
 # echo "Archivo docker-compose.yaml generado con exito"
