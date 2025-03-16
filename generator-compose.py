@@ -12,7 +12,7 @@ def main(output_file, clients):
                 - PYTHONUNBUFFERED=1
                 - LOGGING_LEVEL=DEBUG
             volumes:
-                - ./server/config.ini:/config.ini:rw
+                - ./server/config.ini:/config.ini:ro
             networks:
                 - testing_net
     """
@@ -28,7 +28,7 @@ def main(output_file, clients):
                 - CLI_ID={i}
                 - CLI_LOG_LEVEL=DEBUG
             volumes:
-                - ./client/config.yaml:/config.yaml:rw
+                - ./client/config.yaml:/config.yaml:ro
             networks:
                 - testing_net
             depends_on:
