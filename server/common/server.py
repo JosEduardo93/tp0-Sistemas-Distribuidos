@@ -70,5 +70,5 @@ class Server:
 
     def __signal_handler(self, signum, frame):
         signame = signal.Signals(signum).name
-        logging.info(f"action: {signame} | result: success | signal: {signum}")
+        logging.info(f"action: exit | result: success | signal: {signame}")
         self.server_is_alive = False
