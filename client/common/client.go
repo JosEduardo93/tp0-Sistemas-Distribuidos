@@ -135,7 +135,9 @@ func (c *Client) recvResponse() ([]byte, error) {
 
 	log.Infof("action: apuesta recibida | result: success | cantidad: %d", ok)
 
-	log.Infof("action: apuesta recibida | result: fail | cantidad: %d", fail)
+	if fail > 0 {
+		log.Infof("action: apuesta recibida | result: fail | cantidad: %d", fail)
+	}
 
 	return respData, nil
 }
