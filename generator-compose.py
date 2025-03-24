@@ -32,7 +32,7 @@ def main(output_file, clients):
                 - CLI_NUMERO=7574
             volumes:
                 - ./client/config.yaml:/config.yaml:ro
-                - ./.data/agency-{i}.csv:/agency-{1}.csv:ro
+                - ./.data/agency-{i}.csv:/agency-{1}.csv
             networks:
                 - testing_net
             depends_on:
