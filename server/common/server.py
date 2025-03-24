@@ -51,17 +51,16 @@ class Server:
 
             msg_str = self.recv_bets(client_sock)            
             # TODO: Modify the send to avoid short-writes
-            bets = msg_str.split(';')
-            bet = utils.Bet(bets[0], bets[1], bets[2], bets[3], bets[4], bets[5])
+            bets = msg_str.split('|')
+            result_bets = []
+            for bet in bets:
+                bet = bet.split(';')
+                result_bets.append(utils.Bet(bet[0], bet[1], bet[2], bet[3], bet[4], bet[5]))
+            utils.store_bets(result_bets)
 
-            utils.store_bets([bet])
+            logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
 
-            documento = bet.document
-            numero = bet.number
-
-            logging.info(f"action: apuesta_almacenada | result: success | dni: {documento} | numero: {numero}")
-
-            response = f"{documento};{numero}\n".encode('utf-8')
+            response = f"OK;{len(result_bets)}".encode('utf-8')
             response_len = f"{len(response):04d}".encode('utf-8')
             if not self.__send_all(client_sock, response_len):
                 return
