@@ -84,7 +84,7 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
-func (c *Client) sendBet(data []byte) error {
+func (c *Client) sendBatches(data []byte) error {
 	totalBytes := len(data)
 
 	header := fmt.Sprintf("%04d", totalBytes)
@@ -111,36 +111,16 @@ func (c *Client) recvResponse() ([]byte, error) {
 		return nil, err
 	}
 
-	respData := make([]byte, len(respHeader))
-	if _, err := c.conn.Read(respData); err != nil {
-		log.Criticalf("action: read_response | result: fail | error: %v", err)
+	respSize, err := strconv.Atoi(string(respHeader))
+	if err != nil {
+		log.Criticalf("action: parse_response_header | result: fail | error: %v", err)
 		return nil, err
 	}
 
-	response := strings.Split(string(respData), ";")
-	if len(response) == 0 {
-		log.Criticalf("action: split_response | result: fail | error: empty response")
-		return nil, fmt.Errorf("empty response")
-	}
-
-	ok, err := strconv.Atoi(response[0])
-	if err != nil {
-		log.Criticalf("action: parse_response_ok | result: fail | error: %v", err)
-	}
-
-	fail := 0
-	if len(response) > 1 {
-		var err error
-		fail, err = strconv.Atoi(response[1])
-		if err != nil {
-			log.Criticalf("action: parse_response_fail | result: fail | error: %v", err)
-		}
-	}
-
-	log.Infof("action: apuesta recibida | result: success | cantidad: %d", ok)
-
-	if fail > 0 {
-		log.Infof("action: apuesta recibida | result: fail | cantidad: %d", fail)
+	respData := make([]byte, respSize)
+	if _, err := c.conn.Read(respData); err != nil {
+		log.Criticalf("action: read_response | result: fail | error: %v", err)
+		return nil, err
 	}
 
 	return respData, nil
@@ -245,14 +225,14 @@ func (c *Client) StartClientLoop() {
 			}
 
 			// TODO: Modify the send to avoid short-write
-			if err := c.sendBet(batch); err != nil {
+			if err := c.sendBatches(batch); err != nil {
 				log.Errorf("action: send_message | result: fail | client_id: %v | error: %v",
 					c.config.ID,
 					err,
 				)
 			}
 
-			_, err := c.recvResponse()
+			response, err := c.recvResponse()
 			if err != nil {
 				log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
 					c.config.ID,
@@ -260,7 +240,7 @@ func (c *Client) StartClientLoop() {
 				)
 			}
 
-			// c.parseResponse(response)
+			c.parseResponse(response)
 			// Wait a time between sending one message and the next one
 			time.Sleep(c.config.LoopPeriod)
 		}
@@ -268,28 +248,29 @@ func (c *Client) StartClientLoop() {
 	log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
 }
 
-// func (c *Client) parseResponse(response []byte) {
-// 	responseParts := strings.Split(string(response), ";")
-// 	if len(responseParts) != 2 {
-// 		log.Criticalf("action: parse_response | result: fail | client_id: %v | error: invalid response format",
-// 			c.config.ID,
-// 		)
-// 	}
+func (c *Client) parseResponse(response []byte) {
+	responseParts := strings.Split(string(response), ";")
+	if len(responseParts) != 2 {
+		log.Criticalf("action: parse_response | result: fail | client_id: %v | error: invalid response format",
+			c.config.ID,
+		)
+	}
 
-// 	code := responseParts[0]
-// 	lenght, err := strconv.Atoi(responseParts[1])
-// 	if err != nil {
-// 		log.Criticalf("action: parse_response | result: fail | error: %v", err)
-// 		return
-// 	}
+	code := responseParts[0]
 
-// 	switch code {
-// 	case "FAIL":
-// 		log.Errorf("action: apuesta_recibida | result: fail | cantidad: %d", lenght)
-// 	case "OK":
-// 		log.Infof("action: apuesta_recibida | result: success | cantidad: %d", lenght)
-// 	}
-// }
+	lenght, err := strconv.Atoi(responseParts[1])
+	if err != nil {
+		log.Criticalf("action: parse_response | result: fail | error: %v", err)
+		return
+	}
+
+	switch code {
+	case "FAIL":
+		log.Errorf("action: apuesta_recibida | result: fail | cantidad: %d", lenght)
+	case "SUCCESS":
+		log.Infof("action: apuesta_recibida | result: success | cantidad: %d", lenght)
+	}
+}
 
 func (c *Client) closeClient() {
 	if c.conn != nil {

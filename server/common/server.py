@@ -50,31 +50,21 @@ class Server:
             addr = client_sock.getpeername()
 
             (bets, failed_bets) = self.recv_batches(client_sock)            
-            # TODO: Modify the send to avoid short-writes
-            # bets = msg_str.split('|')
-            # result_bets = []
-            # for bet in bets:
-            #     bet = bet.split(';')
-            #     result_bets.app'|')
-            # result_bets = []
-            # for bet in bets:
-            #     bet = bet.split(';')
-            #     result_bets.appenend(utils.Bet(bet[0], bet[1], bet[2], bet[3], bet[4], bet[5]))
+            
             utils.store_bets(bets)
-
-            logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
+            response = ''
 
             if failed_bets > 0:
                 logging.error(f"action: apuesta_recibida | result: fail | cantidad: {failed_bets}")
+                response = f'FAIL;{failed_bets}'.encode('utf-8')
+            else:
+                logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
+                response = f'SUCCESS;{len(bets)}'.encode('utf-8')
 
-            response = f"{len(bets)};{failed_bets}".encode('utf-8')
             response_len = f"{len(response):04d}".encode('utf-8')
-            if not self.__send_all(client_sock, response_len):
-                return
-            
-            if not self.__send_all(client_sock, response):
-                return
-
+            self.__send_all(client_sock, response_len)
+            self.__send_all(client_sock, response)
+        
         except OSError as e:
             logging.error("action: receive_message | result: fail | error: {e}")
         finally:
