@@ -49,18 +49,25 @@ class Server:
             # TODO: Modify the receive to avoid short-reads
             addr = client_sock.getpeername()
 
-            msg_str = self.recv_bets(client_sock)            
+            (bets, failed_bets) = self.recv_batches(client_sock)            
             # TODO: Modify the send to avoid short-writes
-            bets = msg_str.split('|')
-            result_bets = []
-            for bet in bets:
-                bet = bet.split(';')
-                result_bets.append(utils.Bet(bet[0], bet[1], bet[2], bet[3], bet[4], bet[5]))
-            utils.store_bets(result_bets)
+            # bets = msg_str.split('|')
+            # result_bets = []
+            # for bet in bets:
+            #     bet = bet.split(';')
+            #     result_bets.app'|')
+            # result_bets = []
+            # for bet in bets:
+            #     bet = bet.split(';')
+            #     result_bets.appenend(utils.Bet(bet[0], bet[1], bet[2], bet[3], bet[4], bet[5]))
+            utils.store_bets(bets)
 
             logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
 
-            response = f"OK;{len(result_bets)}".encode('utf-8')
+            if failed_bets > 0:
+                logging.error(f"action: apuesta_recibida | result: fail | cantidad: {failed_bets}")
+
+            response = f"{len(bets)};{failed_bets}".encode('utf-8')
             response_len = f"{len(response):04d}".encode('utf-8')
             if not self.__send_all(client_sock, response_len):
                 return
@@ -73,25 +80,48 @@ class Server:
         finally:
             client_sock.close()
 
-    def recv_bets(self, client_sock):
-        # Receive the number of length of the message
+    def recv_batches(self, client_sock) -> tuple[list, int]:
         header = self.__recv_all(client_sock, 4)
         if not header:
             logging.error(f"action: receive_message | result: fail | error: short-read")
             return
         
+        buffer = bytearray()
         message_size = int(header)
-        logging.info(f'action: receive_message | result: success | msg_len: {message_size}')
+        received_bytes = 0
+        failed_bets = 0
+        bets = []
 
-        # Receive the message bet
-        full_msg = self.__recv_all(client_sock, message_size)
-        if not full_msg:
-            logging.error(f"action: receive_message | result: fail | error: short-read")
-            return
-        
-        msg_str = full_msg.decode('utf-8').rstrip()
-        return msg_str
+        logging.info(f'action: receive_message | result: success | batch_size: {message_size}')
 
+        while received_bytes < message_size:
+            # size_received = 1024 if message_size - received_bytes > 1024 else message_size - received_bytes
+            chunk = client_sock.recv(1024)
+            if not chunk:
+                logging.error(f"action: receive_message | result: fail | error: connection-lost")
+                break
+
+            buffer.extend(chunk)
+            received_bytes += len(chunk)
+            
+            while buffer.find(b'|') != -1:
+                bet, sep, buffer = buffer.partition(b'|')
+                bet = bet.decode('utf-8').rstrip()
+                bet = bet.split(';')
+                if len(bet) != 6:
+                    failed_bets += 1
+                    continue
+                bets.append(utils.Bet(bet[0], bet[1], bet[2], bet[3], bet[4], bet[5]))
+
+            if buffer:
+                bet = buffer.decode('utf-8').rstrip().split(';')
+                if len(bet) == 6:
+                    bets.append(utils.Bet(bet[0], bet[1], bet[2], bet[3], bet[4], bet[5]))
+                else:
+                    failed_bets += 1
+
+        return bets, failed_bets
+    
     def __recv_all(self, sock, size):
         data = b''
         while len(data) < size:
