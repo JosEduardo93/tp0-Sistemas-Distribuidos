@@ -128,9 +128,13 @@ func (c *Client) recvResponse() ([]byte, error) {
 		log.Criticalf("action: parse_response_ok | result: fail | error: %v", err)
 	}
 
-	fail, err := strconv.Atoi(response[1])
-	if err != nil {
-		log.Criticalf("action: parse_response_fail | result: fail | error: %v", err)
+	fail := 0
+	if len(response) > 1 {
+		var err error
+		fail, err = strconv.Atoi(response[1])
+		if err != nil {
+			log.Criticalf("action: parse_response_fail | result: fail | error: %v", err)
+		}
 	}
 
 	log.Infof("action: apuesta recibida | result: success | cantidad: %d", ok)
