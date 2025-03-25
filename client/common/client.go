@@ -89,6 +89,7 @@ func (c *Client) sendBatches(data []byte) error {
 
 	header := fmt.Sprintf("%04d", totalBytes)
 	if _, err := c.conn.Write([]byte(header)); err != nil {
+		log.Criticalf("action: send_message_header | result: fail | error: %v", err)
 		return err
 	}
 
@@ -181,6 +182,7 @@ func createBatches(c *Client, bets []*Bet) [][]byte {
 		betData := bet.serialize()
 
 		if len(betData)+len(currentBatch)+1 > MAX_BATCH_SIZE || betCount >= c.config.MaxAmount {
+			currentBatch = append(currentBatch, '\n')
 			batches = append(batches, currentBatch)
 			currentBatch = []byte{}
 			betCount = 0
@@ -194,6 +196,7 @@ func createBatches(c *Client, bets []*Bet) [][]byte {
 	}
 
 	if len(currentBatch) > 0 {
+		currentBatch = append(currentBatch, '\n')
 		batches = append(batches, currentBatch)
 	}
 	return batches
@@ -209,9 +212,13 @@ func (c *Client) StartClientLoop() {
 	}
 	// There is an autoincremental msgID to identify every message sent
 	// Messages if the message amount threshold has not been surpassed
-	// for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
 
 	batches := createBatches(c, bets)
+	if err := c.createClientSocket(); err != nil {
+		log.Criticalf("action: create_socket | result: fail | error: %v", err)
+		return
+	}
+	defer c.closeClient()
 
 	for _, batch := range batches {
 		// Create the connection the server in every loop iteration. Send an
@@ -220,31 +227,41 @@ func (c *Client) StartClientLoop() {
 			c.closeClient()
 			return
 		default:
-			if err := c.createClientSocket(); err != nil {
-				return
-			}
-
 			// TODO: Modify the send to avoid short-write
 			if err := c.sendBatches(batch); err != nil {
 				log.Errorf("action: send_message | result: fail | client_id: %v | error: %v",
 					c.config.ID,
 					err,
 				)
+				return
 			}
+			// log.Infof("action: send_message-%d | result: success | client_id: %v", i, c.config.ID)
 
-			response, err := c.recvResponse()
-			if err != nil {
-				log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-					c.config.ID,
-					err,
-				)
-			}
-
-			c.parseResponse(response)
 			// Wait a time between sending one message and the next one
 			time.Sleep(c.config.LoopPeriod)
 		}
 	}
+
+	endSignal := []byte("END\n")
+	if err := c.sendBatches(endSignal); err != nil {
+		log.Errorf("action: send_message | result: fail | client_id: %v | error: %v",
+			c.config.ID,
+			err,
+		)
+		return
+	}
+
+	response, err := c.recvResponse()
+	if err != nil {
+		log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
+			c.config.ID,
+			err,
+		)
+		return
+	}
+
+	c.parseResponse(response)
+
 	log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
 }
 
@@ -254,6 +271,7 @@ func (c *Client) parseResponse(response []byte) {
 		log.Criticalf("action: parse_response | result: fail | client_id: %v | error: invalid response format",
 			c.config.ID,
 		)
+		return
 	}
 
 	code := responseParts[0]
@@ -269,6 +287,11 @@ func (c *Client) parseResponse(response []byte) {
 		log.Errorf("action: apuesta_recibida | result: fail | cantidad: %d", lenght)
 	case "SUCCESS":
 		log.Infof("action: apuesta_recibida | result: success | cantidad: %d", lenght)
+	default:
+		log.Criticalf("action: parse_response | result: fail | client_id: %v | error: invalid response code",
+			c.config.ID,
+		)
+		return
 	}
 }
 
