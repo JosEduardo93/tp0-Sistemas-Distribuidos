@@ -84,7 +84,7 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
-func (c *Client) sendBatches(data []byte) error {
+func (c *Client) sendData(data []byte) error {
 	totalBytes := len(data)
 
 	header := fmt.Sprintf("%04d", totalBytes)
@@ -158,18 +158,19 @@ func readBet(c *Client, reader *bufio.Reader) (*Bet, error) {
 	return bet, nil
 }
 
-func createBatch(c *Client, reader *bufio.Reader) []byte {
+func createBatch(c *Client, reader *bufio.Reader) ([]byte, bool) {
 	var batchData []byte
-	// var currentBatch []byte
 	betCount := 0
+	eof := false
 
 	for betCount < c.config.MaxAmount {
 		bet, err := readBet(c, reader)
 		if err != nil {
 			log.Criticalf("action: read_bet | result: fail | error: %v", err)
-			return nil
+			return nil, true
 		}
 		if bet == nil {
+			eof = true
 			break
 		}
 
@@ -190,8 +191,7 @@ func createBatch(c *Client, reader *bufio.Reader) []byte {
 	if len(batchData) > 0 {
 		batchData = append(batchData, '\n')
 	}
-
-	return batchData
+	return batchData, eof
 }
 
 // StartClientLoop Send messages to the client until some time threshold is met
@@ -214,34 +214,25 @@ func (c *Client) StartClientLoop() {
 		log.Criticalf("action: create_socket | result: fail | error: %v", err)
 		return
 	}
-	defer c.conn.Close()
+	defer c.closeClient()
 
-	for {
+	eofRechead := false
+
+	for !eofRechead {
 		// Create the connection the server in every loop iteration. Send an
 		select {
 		case <-c.quit:
 			c.closeClient()
 			return
 		default:
-			batch := createBatch(c, fileReader)
+			batch, eof := createBatch(c, fileReader)
 			// TODO: Modify the send to avoid short-write
-			if batch == nil {
-				endSignal := []byte("END\n")
-				if err := c.sendBatches(endSignal); err != nil {
-					log.Errorf("action: send_message | result: fail | client_id: %v | error: %v",
-						c.config.ID,
-						err,
-					)
-					return
-				}
-			} else {
-				if err := c.sendBatches(batch); err != nil {
-					log.Errorf("action: send_message | result: fail | client_id: %v | error: %v",
-						c.config.ID,
-						err,
-					)
-					return
-				}
+			if err := c.sendData(batch); err != nil {
+				log.Errorf("action: send_message | result: fail | client_id: %v | error: %v",
+					c.config.ID,
+					err,
+				)
+				return
 			}
 
 			response, err := c.recvResponse()
@@ -255,10 +246,21 @@ func (c *Client) StartClientLoop() {
 
 			c.parseResponse(response)
 
-			// Wait a time between sending one message and the next one
+			if eof {
+				eofRechead = true
+				finished := []byte("END\n")
+				if err := c.sendData(finished); err != nil {
+					log.Errorf("action: send_message | result: fail | client_id: %v | error: %v",
+						c.config.ID,
+						err,
+					)
+					return
+				}
+			}
+			// Wait a time between se	nding one message and the next one
 			time.Sleep(c.config.LoopPeriod)
 		}
-		// log.Infof("action: loop_iteration | result: success | client_id: %v", c.config.ID)
+		log.Infof("action: loop_iteration | result: success | client_id: %v", c.config.ID)
 	}
 }
 
