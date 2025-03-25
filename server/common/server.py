@@ -69,7 +69,7 @@ class Server:
                 response = f'FAIL;{failed_bets}'.encode('utf-8')
             else:
                 logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(all_bets)}")
-                response = f'SUCCESS;{len(bets)}'.encode('utf-8')
+                response = f'SUCCESS;{len(all_bets)}'.encode('utf-8')
 
             response_len = f"{len(response):04d}".encode('utf-8')
             self.__send_all(client_sock, response_len)
