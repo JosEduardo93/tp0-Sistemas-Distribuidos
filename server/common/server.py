@@ -51,7 +51,6 @@ class Server:
 
             while True:
                 (bets, batch_failed) = self.recv_batches(client_sock)
-                logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
                 if not bets:
                     break
                 utils.store_bets(bets)
