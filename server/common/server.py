@@ -49,31 +49,29 @@ class Server:
             # TODO: Modify the receive to avoid short-reads
             addr = client_sock.getpeername()
 
-            all_bets = []
-            failed_bets = 0
             while True:
                 (bets, batch_failed) = self.recv_batches(client_sock)
                 logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
                 if not bets:
                     break
-                all_bets.extend(bets)
-                failed_bets += batch_failed
+                utils.store_bets(bets)
+                response = ''
+
+                if batch_failed > 0:
+                    logging.error(f"action: apuesta_recibida | result: fail | cantidad: {batch_failed}")
+                    response = f'FAIL;{batch_failed}'.encode('utf-8')
+                else:
+                    logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
+                    response = f'SUCCESS;{len(bets)}'.encode('utf-8')
+
+                response_len = f"{len(response):04d}".encode('utf-8')
+                self.__send_all(client_sock, response_len)
+                self.__send_all(client_sock, response)
+                # all_bets.extend(bets)
+                # failed_bets += batch_failed
                 if not bets and batch_failed == 0:
                     break
 
-            utils.store_bets(all_bets)
-            response = ''
-
-            if failed_bets > 0:
-                logging.error(f"action: apuesta_recibida | result: fail | cantidad: {failed_bets}")
-                response = f'FAIL;{failed_bets}'.encode('utf-8')
-            else:
-                logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(all_bets)}")
-                response = f'SUCCESS;{len(all_bets)}'.encode('utf-8')
-
-            response_len = f"{len(response):04d}".encode('utf-8')
-            self.__send_all(client_sock, response_len)
-            self.__send_all(client_sock, response)
         
         except OSError as e:
             logging.error("action: receive_message | result: fail | error: {e}")

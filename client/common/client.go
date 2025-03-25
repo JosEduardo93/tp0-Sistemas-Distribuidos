@@ -235,8 +235,17 @@ func (c *Client) StartClientLoop() {
 				)
 				return
 			}
-			// log.Infof("action: send_message-%d | result: success | client_id: %v", i, c.config.ID)
 
+			response, err := c.recvResponse()
+			if err != nil {
+				log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
+					c.config.ID,
+					err,
+				)
+				return
+			}
+
+			c.parseResponse(response)
 			// Wait a time between sending one message and the next one
 			time.Sleep(c.config.LoopPeriod)
 		}
@@ -250,17 +259,6 @@ func (c *Client) StartClientLoop() {
 		)
 		return
 	}
-
-	response, err := c.recvResponse()
-	if err != nil {
-		log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-			c.config.ID,
-			err,
-		)
-		return
-	}
-
-	c.parseResponse(response)
 
 	log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
 }
