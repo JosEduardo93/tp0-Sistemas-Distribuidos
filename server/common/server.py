@@ -49,6 +49,7 @@ class Server:
             # TODO: Modify the receive to avoid short-reads
             addr = client_sock.getpeername()
             all_bets = []
+            failed_bets = 0
             while True:
                 (bets, batch_failed) = self.recv_batches(client_sock)
                 if not bets:
@@ -60,7 +61,7 @@ class Server:
 
             utils.store_bets(all_bets)
             response = ''
-            if batch_failed > 0:
+            if failed_bets > 0:
                 logging.error(f"action: apuesta_recibida | result: fail | cantidad: {len(all_bets)}")
                 response = f'FAIL;{len(all_bets)}'.encode('utf-8')
             else:
