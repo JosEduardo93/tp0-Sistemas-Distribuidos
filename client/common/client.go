@@ -127,107 +127,115 @@ func (c *Client) recvResponse() ([]byte, error) {
 	return respData, nil
 }
 
-func readBets(c *Client) ([]*Bet, error) {
-	filename := fmt.Sprintf("agency-%s.csv", c.config.ID)
-	file, err := os.Open(filename)
+func readBet(c *Client, reader *bufio.Reader) (*Bet, error) {
+	line, err := reader.ReadString('\n')
 	if err != nil {
-		log.Criticalf("action: open_file | result: fail | error: %v", err)
+		if err.Error() == "EOF" {
+			return nil, nil
+		}
+		log.Criticalf("action: read_line | result: fail | error: %v", err)
 		return nil, err
 	}
-	defer file.Close()
 
-	reader := bufio.NewReader(file)
-	var bets []*Bet
-
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			if err.Error() == "EOF" {
-				break
-			}
-			log.Criticalf("action: read_line | result: fail | error: %v", err)
-			return nil, err
-		}
-
-		line_len := strings.Split(strings.TrimSpace(line), ",")
-		if len(line_len) != 5 {
-			log.Criticalf("action: read_line | result: fail | error: invalid line format")
-			return nil, fmt.Errorf("invalid line format")
-		}
-
-		id, _ := strconv.Atoi(c.config.ID)
-		documento, _ := strconv.Atoi(line_len[2])
-		numero, _ := strconv.Atoi(line_len[4])
-
-		bet := &Bet{
-			Id:         id,
-			Nombre:     line_len[0],
-			Apellido:   line_len[1],
-			Documento:  documento,
-			Nacimiento: line_len[3],
-			Numero:     numero,
-		}
-
-		bets = append(bets, bet)
+	line_len := strings.Split(strings.TrimSpace(line), ",")
+	if len(line_len) != 5 {
+		log.Criticalf("action: read_line | result: fail | error: invalid line format")
+		return nil, fmt.Errorf("invalid line format")
 	}
-	return bets, nil
+
+	id, _ := strconv.Atoi(c.config.ID)
+	documento, _ := strconv.Atoi(line_len[2])
+	numero, _ := strconv.Atoi(line_len[4])
+
+	bet := &Bet{
+		Id:         id,
+		Nombre:     line_len[0],
+		Apellido:   line_len[1],
+		Documento:  documento,
+		Nacimiento: line_len[3],
+		Numero:     numero,
+	}
+	return bet, nil
 }
 
-func createBatches(c *Client, bets []*Bet) [][]byte {
-	var batches [][]byte
-	var currentBatch []byte
+func createBatch(c *Client, reader *bufio.Reader) []byte {
+	var batchData []byte
+	// var currentBatch []byte
 	betCount := 0
 
-	for _, bet := range bets {
-		betData := bet.serialize()
-
-		if len(betData)+len(currentBatch)+1 > MAX_BATCH_SIZE || betCount >= c.config.MaxAmount {
-			currentBatch = append(currentBatch, '\n')
-			batches = append(batches, currentBatch)
-			currentBatch = []byte{}
-			betCount = 0
+	for betCount < c.config.MaxAmount {
+		bet, err := readBet(c, reader)
+		if err != nil {
+			log.Criticalf("action: read_bet | result: fail | error: %v", err)
+			return nil
+		}
+		if bet == nil {
+			break
 		}
 
-		if len(currentBatch) > 0 {
-			currentBatch = append(currentBatch, '|')
+		serializeBet := bet.serialize()
+
+		if len(batchData) > 0 && len(batchData)+len(serializeBet)+1 > MAX_BATCH_SIZE {
+			break
 		}
-		currentBatch = append(currentBatch, betData...)
+
+		if len(batchData) > 0 {
+			batchData = append(batchData, '|')
+		}
+
+		batchData = append(batchData, serializeBet...)
 		betCount++
 	}
 
-	if len(currentBatch) > 0 {
-		currentBatch = append(currentBatch, '\n')
-		batches = append(batches, currentBatch)
+	if len(batchData) > 0 {
+		batchData = append(batchData, '\n')
 	}
-	return batches
+
+	return batchData
 }
 
 // StartClientLoop Send messages to the client until some time threshold is met
 func (c *Client) StartClientLoop() {
 	// Open file and send messages to the server
-	bets, err := readBets(c)
+	filename := fmt.Sprintf("agency-%s.csv", c.config.ID)
+	file, err := os.Open(filename)
 	if err != nil {
-		log.Criticalf("action: read_bets | result: fail | error: %v", err)
+		log.Criticalf("action: open_file | result: fail | error: %v", err)
 		return
 	}
+	defer file.Close()
+
+	fileReader := bufio.NewReader(file)
+
 	// There is an autoincremental msgID to identify every message sent
 	// Messages if the message amount threshold has not been surpassed
 
-	batches := createBatches(c, bets)
 	if err := c.createClientSocket(); err != nil {
 		log.Criticalf("action: create_socket | result: fail | error: %v", err)
 		return
 	}
 	defer c.closeClient()
 
-	for _, batch := range batches {
+	for {
 		// Create the connection the server in every loop iteration. Send an
 		select {
 		case <-c.quit:
 			c.closeClient()
 			return
 		default:
+			batch := createBatch(c, fileReader)
 			// TODO: Modify the send to avoid short-write
+			if batch == nil {
+				endSignal := []byte("END\n")
+				if err := c.sendBatches(endSignal); err != nil {
+					log.Errorf("action: send_message | result: fail | client_id: %v | error: %v",
+						c.config.ID,
+						err,
+					)
+					return
+				}
+			}
+
 			if err := c.sendBatches(batch); err != nil {
 				log.Errorf("action: send_message | result: fail | client_id: %v | error: %v",
 					c.config.ID,
@@ -248,20 +256,10 @@ func (c *Client) StartClientLoop() {
 			c.parseResponse(response)
 
 			// Wait a time between sending one message and the next one
-			// time.Sleep(c.config.LoopPeriod)
+			time.Sleep(c.config.LoopPeriod)
 		}
+		// log.Infof("action: loop_iteration | result: success | client_id: %v", c.config.ID)
 	}
-
-	endSignal := []byte("END\n")
-	if err := c.sendBatches(endSignal); err != nil {
-		log.Errorf("action: send_message | result: fail | client_id: %v | error: %v",
-			c.config.ID,
-			err,
-		)
-		return
-	}
-
-	log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
 }
 
 func (c *Client) parseResponse(response []byte) {
