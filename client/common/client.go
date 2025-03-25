@@ -214,7 +214,7 @@ func (c *Client) StartClientLoop() {
 		log.Criticalf("action: create_socket | result: fail | error: %v", err)
 		return
 	}
-	defer c.closeClient()
+	defer c.conn.Close()
 
 	for {
 		// Create the connection the server in every loop iteration. Send an
