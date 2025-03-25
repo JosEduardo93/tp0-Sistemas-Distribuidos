@@ -236,21 +236,21 @@ func (c *Client) StartClientLoop() {
 				return
 			}
 
+			response, err := c.recvResponse()
+			if err != nil {
+				log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
+					c.config.ID,
+					err,
+				)
+				return
+			}
+
+			c.parseResponse(response)
+
 			// Wait a time between sending one message and the next one
-			time.Sleep(c.config.LoopPeriod)
+			// time.Sleep(c.config.LoopPeriod)
 		}
 	}
-
-	response, err := c.recvResponse()
-	if err != nil {
-		log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-			c.config.ID,
-			err,
-		)
-		return
-	}
-
-	c.parseResponse(response)
 
 	endSignal := []byte("END\n")
 	if err := c.sendBatches(endSignal); err != nil {
@@ -285,8 +285,8 @@ func (c *Client) parseResponse(response []byte) {
 	case "FAIL":
 		log.Errorf("action: apuesta_recibida | result: fail | cantidad: %d", lenght)
 		return
-	// case "SUCCESS":
-	// 	log.Infof("action: apuesta_recibida | result: success | cantidad: %d", lenght)
+	case "SUCCESS":
+		log.Infof("action: apuesta_recibida | result: success | cantidad: %d", lenght)
 	default:
 		// log.Criticalf("action: parse_response | result: fail | client_id: %v | error: invalid response code",
 		// 	c.config.ID,
