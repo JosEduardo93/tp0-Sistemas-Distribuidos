@@ -283,8 +283,8 @@ func (c *Client) parseResponse(response []byte) {
 	switch code {
 	case "FAIL":
 		log.Errorf("action: apuesta_recibida | result: fail | cantidad: %d", lenght)
-	case "SUCCESS":
-		log.Infof("action: apuesta_recibida | result: success | cantidad: %d", lenght)
+	// case "SUCCESS":
+	// 	log.Infof("action: apuesta_recibida | result: success | cantidad: %d", lenght)
 	default:
 		log.Criticalf("action: parse_response | result: fail | client_id: %v | error: invalid response code",
 			c.config.ID,
