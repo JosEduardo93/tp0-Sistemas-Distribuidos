@@ -113,6 +113,30 @@ func (c *Client) send(data []byte, size int) int {
 	return totalSend
 }
 
+func (c *Client) recvOne() (byte, error) {
+	buf := make([]byte, 1)
+	_, err := c.conn.Read(buf)
+	if err != nil {
+		return 0, err
+	}
+	return buf[0], nil
+}
+
+func (c *Client) recv(size int) []byte {
+	data := make([]byte, size)
+	totalRecv := 0
+	for totalRecv < size {
+		b, err := c.recvOne()
+		if err != nil {
+			log.Criticalf("action: receive_message | result: fail | error: %v", err)
+			return nil
+		}
+		data[totalRecv] = b
+		totalRecv++
+	}
+	return data
+}
+
 func (c *Client) sendBatch(data []byte) bool {
 	totalBytes := len(data)
 
@@ -134,26 +158,26 @@ func (c *Client) sendBatch(data []byte) bool {
 	return false
 }
 
-func (c *Client) recvResponse() ([]byte, error) {
-	respHeader := make([]byte, 4)
-	if _, err := c.conn.Read(respHeader); err != nil {
-		log.Criticalf("action: read_response_header | result: fail | error: %v", err)
-		return nil, err
+func (c *Client) recvResponse() []byte {
+	respHeader := c.recv(SIZE_HEADER)
+	if respHeader == nil {
+		log.Criticalf("action: read_response_header | result: fail")
+		return nil
 	}
 
 	respSize, err := strconv.Atoi(string(respHeader))
 	if err != nil {
 		log.Criticalf("action: parse_response_header | result: fail | error: %v", err)
-		return nil, err
+		return nil
 	}
 
-	respData := make([]byte, respSize)
-	if _, err := c.conn.Read(respData); err != nil {
+	respData := c.recv(respSize)
+	if respData == nil {
 		log.Criticalf("action: read_response | result: fail | error: %v", err)
-		return nil, err
+		return nil
 	}
 
-	return respData, nil
+	return respData
 }
 
 func readBet(c *Client, reader *bufio.Reader) (*Bet, error) {
@@ -261,7 +285,7 @@ func (c *Client) StartClientLoop() {
 		default:
 			finishedLotery = c.handlePhase(fileReader)
 			// Wait a time between se	nding one message and the next one
-			// time.Sleep(c.config.LoopPeriod)
+			time.Sleep(c.config.LoopPeriod)
 		}
 	}
 }
@@ -308,7 +332,6 @@ func (c *Client) handlePhase(reader *bufio.Reader) bool {
 }
 
 func (c *Client) handleBatch(reader *bufio.Reader) {
-	// eofRechead := false
 	n := c.sendOne(CODE_BATCH)
 	if n == 0 {
 		log.Errorf("action: send_message_code_batch | result: fail | client_id: %v",
@@ -324,11 +347,10 @@ func (c *Client) handleBatch(reader *bufio.Reader) {
 		return
 	}
 
-	response, err := c.recvResponse()
-	if err != nil {
-		log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
+	response := c.recvResponse()
+	if response == nil {
+		log.Errorf("action: receive_status_batch | result: fail | client_id: %v ",
 			c.config.ID,
-			err,
 		)
 		return
 	}
@@ -341,6 +363,13 @@ func (c *Client) handleBatch(reader *bufio.Reader) {
 
 func (c *Client) handleWaitForResult() {
 	log.Infof("action: wait_for_result | client_id: %v", c.config.ID)
+	listWinner := c.recvWinners()
+	if listWinner == nil {
+		log.Criticalf("action: read_winners | result: fail")
+		return
+	}
+	log.Infof("action: winners_received | winners: %s", listWinner)
+	c.config.Phase = CODE_END
 }
 
 func (c *Client) handleResult() {
@@ -387,6 +416,28 @@ func (c *Client) parseResponse(response []byte) {
 		// )
 		return
 	}
+}
+
+func (c *Client) recvWinners() []byte {
+	sizeData := c.recv(SIZE_HEADER)
+	if sizeData == nil {
+		log.Criticalf("action: read_winners_header | result: fail")
+		return nil
+	}
+
+	size, err := strconv.Atoi(string(sizeData))
+	if err != nil {
+		log.Criticalf("action: parse_winners_header | result: fail | error: %v", err)
+		return nil
+	}
+
+	data := c.recv(size)
+	if data == nil {
+		log.Criticalf("action: read_winners | result: fail")
+		return nil
+	}
+
+	return data
 }
 
 func (c *Client) closeClient() {

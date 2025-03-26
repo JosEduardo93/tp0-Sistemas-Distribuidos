@@ -3,6 +3,7 @@ import logging
 import signal
 from common import utils
 
+MAX_AGENCIES = 2
 CODE_AGENCY = b'A'
 CODE_BATCH = b'B'
 CODE_RESULT = b'R'
@@ -17,6 +18,8 @@ class Server:
         self._server_socket.listen(listen_backlog)
         self.server_is_alive = True
         self.list_clients = {}
+        self.list_winners = {}
+        self.waiting_clients = {}
 
     def run(self):
         """
@@ -59,7 +62,11 @@ class Server:
             endClient = False
             while not endClient:
                 code = self.__recv_all(client_sock, 1)
-                self.handle_client_connection(client_sock, code)
+                if code == CODE_END:
+                    logging.info(f"action: end_connection | result: success | ip: {client_sock.getpeername()[0]}")
+                    endClient = True                
+                else:
+                    self.handle_client_connection(client_sock, code)
 
         except OSError as e:
             logging.error("action: receive_message | result: fail | error: {e}")
@@ -72,9 +79,7 @@ class Server:
         elif code == CODE_BATCH:
             self.__handle_batch(client_sock)
         elif code == CODE_RESULT:
-            self.__handle_bet(client_sock)
-        elif code == CODE_END:
-            self.__handle_end(client_sock)
+            self.__handle_result(client_sock)
 
     def __handle_agency(self, client_sock):
         sizeData = self.__recv_all(client_sock, 4)
@@ -82,7 +87,7 @@ class Server:
         idAgency = self.__recv_all(client_sock, sizeData)
         data = int(idAgency)
         logging.info(f"action: receive_agency | result: success | id: {data}")
-        self.list_clients[client_sock.getpeername()] = data        
+        self.list_clients[client_sock.getpeername()] = [data, client_sock]        
 
     def __handle_batch(self, client_sock):
         (batch, failed_bets) = self.recv_batch(client_sock)
@@ -97,9 +102,45 @@ class Server:
         self.__send_all(client_sock, response_len)
         self.__send_all(client_sock, response)
 
-    def __handle_end(self, client_sock):
-        logging.info(f"action: end_connection | result: success | ip: {client_sock.getpeername()[0]}")
-        # client_sock.close()
+    def __handle_result(self, client_sock):
+        agency_id = self.list_clients.get(client_sock.getpeername())
+        if not agency_id:
+            logging.error(f"action: receive_result | result: fail | error: unknown agency")
+            return
+        
+        self.list_winners[agency_id] = True
+        self.waiting_clients[agency_id] = client_sock
+
+        if len(self.list_winners) < MAX_AGENCIES:
+            logging.info(f"action: wait_for_sorteo | result: in_progress | agencies: {len(self.list_winners)}/{MAX_AGENCIES}")
+            return
+
+        logging.info("action: sorteo | result: success")
+
+        all_bets = utils.load_bets()
+        self.winners = {}
+
+        for bet in all_bets:
+            if utils.has_won(bet):
+                if bet.agency not in self.winners:
+                    self.winners[bet.agency] = []
+                self.winners[bet.agency].append(bet.document)
+
+        # Ahora que el sorteo está completo, enviamos los resultados a los clientes en espera
+        for agency_id, client in self.waiting_clients.items():
+            self.__send_winners(client, agency_id)
+        self.waiting_clients.clear()
+
+    def __send_winners(self, client_sock, agency_id):
+        winners_list = self.winners.get(agency_id, [])
+        winners_data = ";".join(map(str, winners_list)).encode("utf-8")
+
+        response_len = f"{len(winners_data):04d}".encode('utf-8')
+        self.__send_all(client_sock, response_len)
+        self.__send_all(client_sock, winners_data)
+
+        logging.info(f"action: send_winners | result: success | agency: {agency_id} | cant_ganadores: {len(winners_list)}")
+
 
     def recv_batch(self, client_sock) -> tuple[list, int]:
         header = self.__recv_all(client_sock, 4)
@@ -140,7 +181,7 @@ class Server:
             try:
                 chunk = sock.recv(size - len(data))
                 if not chunk:
-                    raise RuntimeError("Socket connection broken")
+                    return None
                 data += chunk
             except OSError as e:
                 logging.error(f"action: receive_message | result: fail | error: {e}")
@@ -153,7 +194,7 @@ class Server:
             try:
                 sent = sock.send(data[total_sent:])
                 if sent == 0:
-                    raise RuntimeError("Socket connection broken")
+                    return False
                 total_sent += sent
             except OSError as e:
                 logging.error(f"action: send_message | result: fail | error: {e}")
