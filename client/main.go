@@ -105,14 +105,13 @@ func main() {
 	// Print program config with debugging purposes
 	PrintConfig(v)
 
-	// fmt.Println("batch size: ", v.GetInt("batch.maxAmount"))
-
 	clientConfig := common.ClientConfig{
 		ServerAddress: v.GetString("server.address"),
 		ID:            v.GetString("id"),
 		LoopAmount:    v.GetInt("loop.amount"),
 		LoopPeriod:    v.GetDuration("loop.period"),
 		MaxAmount:     v.GetInt("batch.maxAmount"),
+		Phase:         common.CODE_BATCH,
 	}
 
 	client := common.NewClient(clientConfig)

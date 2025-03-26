@@ -3,6 +3,11 @@ import logging
 import signal
 from common import utils
 
+CODE_AGENCY = b'A'
+CODE_BATCH = b'B'
+CODE_RESULT = b'R'
+CODE_END = b'E'
+
 class Server:
     def __init__(self, port, listen_backlog):
         # Initialize server socket
@@ -11,6 +16,7 @@ class Server:
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
         self.server_is_alive = True
+        self.list_clients = {}
 
     def run(self):
         """
@@ -48,34 +54,54 @@ class Server:
         try:
             # TODO: Modify the receive to avoid short-reads
             addr = client_sock.getpeername()
-            all_bets = []
-            failed_bets = 0
-            while True:
-                (bets, batch_failed) = self.recv_batches(client_sock)
-                if not bets:
-                    break
-                if failed_bets > 0:
-                    logging.error(f"action: apuesta_recibida | result: fail | cantidad: {batch_failed}")
-                    response = f'FAIL;{len(bets)}'.encode('utf-8')
-                else :
-                    logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
-                    response = f'SUCCESS;{len(bets)}'.encode('utf-8')
-                utils.store_bets(bets)
-                
-                response_len = f"{len(response):04d}".encode('utf-8')
-                self.__send_all(client_sock, response_len)
-                self.__send_all(client_sock, response)
-                all_bets.extend(bets)
-                failed_bets += batch_failed
-                if not bets and batch_failed == 0:
-                    break
+            logging.info(f"action: receive_message | result: in_progress | ip: {addr[0]}")
+
+            endClient = False
+            while not endClient:
+                code = self.__recv_all(client_sock, 1)
+                self.handle_client_connection(client_sock, code)
 
         except OSError as e:
             logging.error("action: receive_message | result: fail | error: {e}")
         finally:
             client_sock.close()
 
-    def recv_batches(self, client_sock) -> tuple[list, int]:
+    def handle_client_connection(self, client_sock, code):
+        if code == CODE_AGENCY:
+            self.__handle_agency(client_sock)
+        elif code == CODE_BATCH:
+            self.__handle_batch(client_sock)
+        elif code == CODE_RESULT:
+            self.__handle_bet(client_sock)
+        elif code == CODE_END:
+            self.__handle_end(client_sock)
+
+    def __handle_agency(self, client_sock):
+        sizeData = self.__recv_all(client_sock, 4)
+        sizeData = int(sizeData)
+        idAgency = self.__recv_all(client_sock, sizeData)
+        data = int(idAgency)
+        logging.info(f"action: receive_agency | result: success | id: {data}")
+        self.list_clients[client_sock.getpeername()] = data        
+
+    def __handle_batch(self, client_sock):
+        (batch, failed_bets) = self.recv_batch(client_sock)
+        if failed_bets > 0:
+            logging.error(f"action: receive_batch | result: fail | error: {failed_bets}")
+            response = f'FAIL;{len(batch)}'.encode('utf-8')
+        else:
+            logging.info(f"action: receive_batch | result: success | cantidad: {len(batch)}")
+            response = f'SUCCESS;{len(batch)}'.encode('utf-8')
+        utils.store_bets(batch)
+        response_len = f"{len(response):04d}".encode('utf-8')
+        self.__send_all(client_sock, response_len)
+        self.__send_all(client_sock, response)
+
+    def __handle_end(self, client_sock):
+        logging.info(f"action: end_connection | result: success | ip: {client_sock.getpeername()[0]}")
+        # client_sock.close()
+
+    def recv_batch(self, client_sock) -> tuple[list, int]:
         header = self.__recv_all(client_sock, 4)
         if not header:
             logging.error(f"action: receive_message | result: fail | error: short-read")
@@ -88,7 +114,7 @@ class Server:
         bets = []
 
         while received_bytes < message_size:
-            chunk = client_sock.recv(min(1024, message_size - received_bytes))
+            chunk = client_sock.recv(1024)
             if not chunk:
                 logging.error(f"action: receive_message | result: fail | error: connection-lost")
                 return None, 0
@@ -99,9 +125,6 @@ class Server:
         batch_list = batch_data.split('\n')
 
         for batch in batch_list:
-            if batch.strip() == "END":
-                logging.info(f"action: receive_end_batch | result: success ")
-                break
             batch_bets = batch.split('|')
             for b in batch_bets:
                 bet = b.split(';')
