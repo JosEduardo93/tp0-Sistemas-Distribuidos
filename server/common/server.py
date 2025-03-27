@@ -104,7 +104,6 @@ class Server:
 
         if idAgency in self.waiting_clients:
             self.__send_all(client_sock, CODE_WAIT)
-            client_sock.close()
             return
         
         self.waiting_clients.add(idAgency)
