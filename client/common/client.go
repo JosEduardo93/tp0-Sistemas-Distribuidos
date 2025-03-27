@@ -296,8 +296,9 @@ func (c *Client) StartClientLoop() {
 				return
 			}
 			// Wait a time between sending one message and the next one
-			time.Sleep(c.config.LoopPeriod)
+			// time.Sleep(c.config.LoopPeriod)
 		}
+		time.Sleep(10 * time.Second)
 	}
 }
 
@@ -376,7 +377,7 @@ func (c *Client) handleWaitForResult() {
 	}
 	if code == CODE_WAIT_FOR_RESULT {
 		c.handleCloseConnection()
-		time.Sleep(20 * time.Second)
+		time.Sleep(1 * time.Second)
 		c.closeClient()
 		if err := c.createClientSocket(); err != nil {
 			log.Criticalf("action: create_socket | result: fail | error: %v", err)
