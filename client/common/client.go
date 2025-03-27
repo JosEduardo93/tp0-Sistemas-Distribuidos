@@ -270,19 +270,6 @@ func (c *Client) StartClientLoop() {
 	}
 	defer c.closeClient()
 
-	// finishedLotery := false
-
-	// Send the code of the agency
-	// n := c.sendOne(CODE_AGENCY)
-	// if n == 0 {
-	// 	log.Criticalf("action: send_message_code_agency | result: fail | client: %v", c.config.ID)
-	// 	return
-	// }
-	// if error := c.sendCodeAgency(); error {
-	// 	log.Errorf("action: send_code_agency | result: fail | client: %v", c.config.ID)
-	// 	return
-	// }
-
 	for {
 		// 	// Create the connection the server in every loop iteration. Send an
 		select {
@@ -296,9 +283,8 @@ func (c *Client) StartClientLoop() {
 				return
 			}
 			// Wait a time between sending one message and the next one
-			// time.Sleep(c.config.LoopPeriod)
+			time.Sleep(c.config.LoopPeriod)
 		}
-		time.Sleep(10 * time.Second)
 	}
 }
 
@@ -472,6 +458,7 @@ func (c *Client) recvWinners() []byte {
 }
 
 func (c *Client) closeClient() {
+	time.Sleep(10 * time.Second)
 	if c.conn != nil {
 		log.Infof("action: exit | result: success | client_id: %v", c.config.ID)
 		c.conn.Close()
