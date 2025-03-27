@@ -224,3 +224,9 @@ class Server:
         signame = signal.Signals(signum).name
         logging.info(f"action: exit | result: success | signal: {signame}")
         self.serverIsAlive = False
+        self.__close_server()
+
+    def __close_server(self):
+        self._server_socket.close()
+        logging.info("action: close_server | result: success")
+        exit(0)
