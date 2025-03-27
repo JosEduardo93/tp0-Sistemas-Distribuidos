@@ -376,7 +376,7 @@ func (c *Client) handleWaitForResult() {
 	}
 	if code == CODE_WAIT_FOR_RESULT {
 		c.handleCloseConnection()
-		time.Sleep(5 * time.Second)
+		time.Sleep(10 * time.Second)
 		c.closeClient()
 		if err := c.createClientSocket(); err != nil {
 			log.Criticalf("action: create_socket | result: fail | error: %v", err)
@@ -473,7 +473,6 @@ func (c *Client) recvWinners() []byte {
 func (c *Client) closeClient() {
 	if c.conn != nil {
 		log.Infof("action: exit | result: success | client_id: %v", c.config.ID)
-		time.Sleep(1 * time.Second)
 		c.conn.Close()
 	}
 }
