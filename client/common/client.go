@@ -272,6 +272,12 @@ func (c *Client) StartClientLoop() {
 
 	// finishedLotery := false
 
+	// Send the code of the agency
+	// n := c.sendOne(CODE_AGENCY)
+	// if n == 0 {
+	// 	log.Criticalf("action: send_message_code_agency | result: fail | client: %v", c.config.ID)
+	// 	return
+	// }
 	// if error := c.sendCodeAgency(); error {
 	// 	log.Errorf("action: send_code_agency | result: fail | client: %v", c.config.ID)
 	// 	return
@@ -373,7 +379,7 @@ func (c *Client) handleWaitForResult() {
 		log.Infof("action: wait_for_result | code: %s | client_id: %v ", string(code), c.config.ID)
 		c.handleCloseConnection()
 		c.closeClient()
-		time.Sleep(3 * time.Second)
+		time.Sleep(time.Second)
 		if err := c.createClientSocket(); err != nil {
 			log.Criticalf("action: create_socket | result: fail | error: %v", err)
 			return
@@ -387,7 +393,7 @@ func (c *Client) handleWaitForResult() {
 		return
 	}
 	listWinnerStr := strings.Split(string(listWinner), ";")
-	log.Infof("action: consulta_ganadores | result: sucess | cant_ganadores: %d", len(listWinnerStr))
+	log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", len(listWinnerStr))
 	c.config.Phase = CODE_END
 }
 
@@ -402,7 +408,6 @@ func (c *Client) handleResult() {
 		log.Criticalf("action: send_code_agency | result: fail")
 		return
 	}
-	log.Infof("action: consult_result | result: success")
 	c.config.Phase = CODE_WAIT_FOR_RESULT
 }
 

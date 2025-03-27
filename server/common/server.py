@@ -19,6 +19,7 @@ class Server:
         self._server_socket.listen(listen_backlog)
         self.serverIsAlive = True
         self.winners = None
+        self.clients = set()
         self.waiting_clients = set()
         self.max_agencies = listen_backlog
 
@@ -75,6 +76,16 @@ class Server:
             self.__handle_batch(client_sock)
         elif code == CODE_RESULT:
             self.__handle_result(client_sock)
+    #     if code == CODE_AGENCY:
+    #         self.__handle_agency(client_sock)
+
+    # def __handle_agency(self, client_sock):
+    #     idAgency = self.recv_id_agency(client_sock)
+    #     if not idAgency:
+    #         logging.error(f"action: receive_agency | result: fail | error: unknown agency")
+    #         return
+        
+    #     self.clients.add(idAgency)
 
     def recv_id_agency(self, client_sock) -> int:
         idAgency = self.__recv_all(client_sock, 1)
@@ -96,27 +107,23 @@ class Server:
         self.__send_all(client_sock, response)
 
     def __handle_result(self, client_sock):
-        logging.info(f"action: receive_result | result: in_progress")
         idAgency = self.recv_id_agency(client_sock)
         if not idAgency:
             logging.error(f"action: receive_result | result: fail | error: unknown agency")
             return
-        
-        logging.info(f"action: receive_result | result: success | id_agency: {idAgency}")
         
         if self.winners is not None:
             self.__send_winners(client_sock, idAgency)
             return
 
         if idAgency in self.waiting_clients:
-            logging.error(f"action: receive_result | result: fail | error: already waiting")
             self.__send_all(client_sock, CODE_WAIT)
             return
         
         self.waiting_clients.add(idAgency)
-        logging.info(f"action: wait_for_sorteo | result: in_progress | id_agency: {idAgency} | agencies: {len(self.waiting_clients)}/{self.max_agencies}")
+        logging.info(f"action: wait_for_sorteo | result: in_progress | id_agency: {idAgency} | agencies: {len(self.waiting_clients)}/{len(self.clients)}")
         
-        if len(self.waiting_clients) >= self.max_agencies:
+        if len(self.waiting_clients) in range(3, 5):
             logging.info("action: sorteo | result: success")
             allBets = utils.load_bets()
             self.winners = {}
@@ -212,6 +219,7 @@ class Server:
         try:
             logging.info('action: accept_connections | result: in_progress')
             c, addr = self._server_socket.accept()
+            self.clients.add(c)
             logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
             return c
         except OSError:
