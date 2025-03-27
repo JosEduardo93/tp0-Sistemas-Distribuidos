@@ -270,40 +270,41 @@ func (c *Client) StartClientLoop() {
 	}
 	defer c.closeClient()
 
-	finishedLotery := false
+	// finishedLotery := false
 
 	// if error := c.sendCodeAgency(); error {
 	// 	log.Errorf("action: send_code_agency | result: fail | client: %v", c.config.ID)
 	// 	return
 	// }
 
-	for !finishedLotery {
+	for {
 		// 	// Create the connection the server in every loop iteration. Send an
 		select {
 		case <-c.quit:
 			c.closeClient()
 			return
 		default:
-			finishedLotery = c.handlePhase(fileReader)
-			// Wait a time between se	nding one message and the next one
+			finishedLotery := c.handlePhase(fileReader)
+			if finishedLotery {
+				log.Infof("action: finished_lotery | result: success")
+				return
+			}
+			// Wait a time between sending one message and the next one
 			time.Sleep(c.config.LoopPeriod)
 		}
 	}
 }
 
 func (c *Client) sendCodeAgency() bool {
-	// Send size len data
-	sizeData := fmt.Sprintf("%04d", len(c.config.ID))
-	result := c.send([]byte(sizeData), SIZE_HEADER)
-	if result != SIZE_HEADER {
-		log.Criticalf("action: send_message_header | result: fail | error: invalid size")
+	id, err := strconv.Atoi(c.config.ID)
+	if err != nil {
+		log.Criticalf("action: convert_id | result: fail | error: %v", err)
 		return true
 	}
-	// Send data
-	data := []byte(c.config.ID)
-	resultData := c.send(data, len(data))
-	if resultData != len(data) {
-		log.Criticalf("action: send_message | result: fail | error: invalid data")
+	data := []byte(fmt.Sprintf("%01d", id))
+	n := c.send(data, 1)
+	if n == 0 {
+		log.Criticalf("action: send_message_code_agency | result: fail")
 		return true
 	}
 	return false
@@ -329,6 +330,12 @@ func (c *Client) handlePhase(reader *bufio.Reader) bool {
 }
 
 func (c *Client) handleBatch(reader *bufio.Reader) {
+	batch, eof := c.createBatch(reader)
+	if eof {
+		c.config.Phase = CODE_RESULT
+		return
+	}
+
 	n := c.sendOne(CODE_BATCH)
 	if n == 0 {
 		log.Errorf("action: send_message_code_batch | result: fail | client_id: %v",
@@ -336,7 +343,7 @@ func (c *Client) handleBatch(reader *bufio.Reader) {
 		)
 		return
 	}
-	batch, eof := c.createBatch(reader)
+
 	if error := c.sendBatch(batch); error {
 		log.Errorf("action: send_message_batch | result: fail | client_id: %v",
 			c.config.ID,
@@ -353,20 +360,19 @@ func (c *Client) handleBatch(reader *bufio.Reader) {
 	}
 
 	c.parseResponse(response)
-	if eof {
-		c.config.Phase = CODE_RESULT
-	}
 }
 
 func (c *Client) handleWaitForResult() {
+	log.Infof("action: wait_for_result | client_id: %v", c.config.ID)
 	code, err := c.recvOne()
 	if err != nil {
 		log.Criticalf("action: read_code | result: fail | error: %v", err)
 		return
 	}
-	if code != CODE_WINNER {
+	if code == CODE_WAIT_FOR_RESULT {
 		log.Infof("action: wait_for_result | code: %s | client_id: %v ", string(code), c.config.ID)
-		c.conn.Close()
+		c.handleCloseConnection()
+		c.closeClient()
 		time.Sleep(3 * time.Second)
 		if err := c.createClientSocket(); err != nil {
 			log.Criticalf("action: create_socket | result: fail | error: %v", err)
@@ -380,20 +386,23 @@ func (c *Client) handleWaitForResult() {
 		log.Criticalf("action: read_winners | result: fail")
 		return
 	}
-	log.Infof("action: winners_received | winners: %s", listWinner)
+	listWinnerStr := strings.Split(string(listWinner), ";")
+	log.Infof("action: consulta_ganadores | result: sucess | cant_ganadores: %d", len(listWinnerStr))
 	c.config.Phase = CODE_END
 }
 
 func (c *Client) handleResult() {
-	n := c.sendOne(CODE_RESULT)
-	if n == 0 {
+	n := c.send([]byte{CODE_RESULT}, 1)
+	if n != 1 {
 		log.Criticalf("action: send_message_result | result: fail")
+		return
 	}
 	error := c.sendCodeAgency()
 	if error {
 		log.Criticalf("action: send_code_agency | result: fail")
 		return
 	}
+	log.Infof("action: consult_result | result: success")
 	c.config.Phase = CODE_WAIT_FOR_RESULT
 }
 
@@ -402,6 +411,7 @@ func (c *Client) handleCloseConnection() {
 	if n == 0 {
 		log.Criticalf("action: send_message_end | result: fail")
 	}
+	log.Infof("action: close_connection | result: success")
 }
 
 func (c *Client) parseResponse(response []byte) {

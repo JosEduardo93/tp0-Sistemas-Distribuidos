@@ -3,7 +3,6 @@ import logging
 import signal
 from common import utils
 
-MAX_AGENCIES = 2
 CODE_AGENCY = b'A'
 CODE_BATCH = b'B'
 CODE_RESULT = b'R'
@@ -19,8 +18,9 @@ class Server:
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
         self.serverIsAlive = True
-        self.winners = {}
+        self.winners = None
         self.waiting_clients = set()
+        self.max_agencies = listen_backlog
 
     def run(self):
         """
@@ -60,75 +60,76 @@ class Server:
             addr = client_sock.getpeername()
             logging.info(f"action: receive_message | result: in_progress | ip: {addr}")
 
-            endClient = False
-            while not endClient:
+            while True:
                 code = self.__recv_all(client_sock, 1)
                 if code == CODE_END:
-                    logging.info(f"action: end_connection | result: success | ip: {client_sock.getpeername()[0]}")
-                    endClient = True                
-                else:
-                    self.handle_client_connection(client_sock, addr, code)
-
+                    break
+                self.handle_client_connection(client_sock, code)
         except OSError as e:
             logging.error("action: receive_message | result: fail | error: {e}")
         finally:
             client_sock.close()
 
-    def handle_client_connection(self, client_sock, addr, code):
+    def handle_client_connection(self, client_sock, code):
         if code == CODE_BATCH:
-            self.__handle_batch(client_sock, addr)
+            self.__handle_batch(client_sock)
         elif code == CODE_RESULT:
-            self.__handle_result(client_sock,addr)
+            self.__handle_result(client_sock)
 
     def recv_id_agency(self, client_sock) -> int:
-        sizeData = self.__recv_all(client_sock, 4)
-        sizeData = int(sizeData)
-        idAgency = self.__recv_all(client_sock, sizeData)
+        idAgency = self.__recv_all(client_sock, 1)
         idAgency = int(idAgency)
         logging.info(f"action: receive_agency | result: success | id: {idAgency}")
         return idAgency
 
-    def __handle_batch(self, client_sock, addr):
+    def __handle_batch(self, client_sock):
         (batch, failed_bets) = self.recv_batch(client_sock)
         if failed_bets > 0:
             logging.error(f"action: receive_batch | result: fail | error: {failed_bets}")
             response = f'FAIL;{len(batch)}'.encode('utf-8')
         else:
-            # logging.info(f"action: receive_batch | result: success | cantidad: {len(batch)}")
+            logging.info(f"action: receive_batch | result: success | cantidad: {len(batch)}")
             response = f'SUCCESS;{len(batch)}'.encode('utf-8')
         utils.store_bets(batch)
         response_len = f"{len(response):04d}".encode('utf-8')
         self.__send_all(client_sock, response_len)
         self.__send_all(client_sock, response)
 
-    def __handle_result(self, client_sock, addr):
+    def __handle_result(self, client_sock):
+        logging.info(f"action: receive_result | result: in_progress")
         idAgency = self.recv_id_agency(client_sock)
         if not idAgency:
             logging.error(f"action: receive_result | result: fail | error: unknown agency")
             return
-
-        self.waiting_clients.add(idAgency)
-        logging.info(f"action: wait_for_sorteo | result: in_progress | id_agency: {idAgency}:{addr} | agencies: {len(self.waiting_clients)}/{MAX_AGENCIES}")
         
-        if len(self.waiting_clients) < MAX_AGENCIES:
+        logging.info(f"action: receive_result | result: success | id_agency: {idAgency}")
+        
+        if self.winners is not None:
+            self.__send_winners(client_sock, idAgency)
+            return
+
+        if idAgency in self.waiting_clients:
+            logging.error(f"action: receive_result | result: fail | error: already waiting")
             self.__send_all(client_sock, CODE_WAIT)
             return
         
-        logging.info("action: sorteo | result: success")
-        allBets = utils.load_bets()
-
-        if not allBets:
-            logging.error("action: sorteo | result: fail | error: no bets")
-            return
+        self.waiting_clients.add(idAgency)
+        logging.info(f"action: wait_for_sorteo | result: in_progress | id_agency: {idAgency} | agencies: {len(self.waiting_clients)}/{self.max_agencies}")
         
-        if not self.winners:
+        if len(self.waiting_clients) >= self.max_agencies:
+            logging.info("action: sorteo | result: success")
+            allBets = utils.load_bets()
+            self.winners = {}
             for bet in allBets:
                 if utils.has_won(bet):
                     if bet.agency not in self.winners:
                         self.winners[bet.agency] = []
                     self.winners[bet.agency].append(bet.document)
             
-        self.__send_winners(client_sock, idAgency)
+        if self.winners is not None:
+            self.__send_winners(client_sock, idAgency)
+        else:
+            self.__send_all(client_sock, CODE_WAIT)
     
     def __send_winners(self, client_sock, agency_id):
         self.__send_all(client_sock, CODE_WINNER)
@@ -139,8 +140,7 @@ class Server:
         self.__send_all(client_sock, responseLen)
         self.__send_all(client_sock, winnersData)
 
-        logging.info(f"action: send_winners | result: success | agency: {agency_id} | cant_ganadores: {len(winnersList)}")
-
+        logging.info(f"action: send_winners | result: success | agency: {agency_id}")
 
     def recv_batch(self, client_sock) -> tuple[list, int]:
         header = self.__recv_all(client_sock, 4)
@@ -155,7 +155,7 @@ class Server:
         bets = []
 
         while receivedBytes < messageSize:
-            chunk = client_sock.recv(1024)
+            chunk = client_sock.recv(min(1024, messageSize - receivedBytes))
             if not chunk:
                 logging.error(f"action: receive_message | result: fail | error: connection-lost")
                 return None, 0
