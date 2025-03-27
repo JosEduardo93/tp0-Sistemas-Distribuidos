@@ -10,7 +10,7 @@ class Server:
         self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
-        self.server_is_alive = True
+        self.serverIsAlive = True
 
     def run(self):
         """
@@ -27,7 +27,7 @@ class Server:
         signal.signal(signal.SIGTERM, self.__signal_handler)
         signal.signal(signal.SIGINT, self.__signal_handler)
 
-        while self.server_is_alive:
+        while self.serverIsAlive:
             try:
                 client_sock = self.__accept_new_connection()
                 if client_sock:
@@ -81,11 +81,11 @@ class Server:
             logging.error(f"action: receive_message | result: fail | error: short-read")
             return
         
-        message_size = int(header)
-        logging.info(f'action: receive_message | result: success | msg_len: {message_size}')
+        messageSize = int(header)
+        logging.info(f'action: receive_message | result: success | msg_len: {messageSize}')
 
         # Receive the message bet
-        full_msg = self.__recv_all(client_sock, message_size)
+        full_msg = self.__recv_all(client_sock, messageSize)
         if not full_msg:
             logging.error(f"action: receive_message | result: fail | error: short-read")
             return
@@ -99,7 +99,7 @@ class Server:
             try:
                 chunk = sock.recv(size - len(data))
                 if not chunk:
-                    raise RuntimeError("Socket connection broken")
+                    return None
                 data += chunk
             except OSError as e:
                 logging.error(f"action: receive_message | result: fail | error: {e}")
@@ -107,13 +107,13 @@ class Server:
         return data
 
     def __send_all(self, sock, data):
-        total_sent = 0
-        while total_sent < len(data):
+        totalSent = 0
+        while totalSent < len(data):
             try:
-                sent = sock.send(data[total_sent:])
+                sent = sock.send(data[totalSent:])
                 if sent == 0:
-                    raise RuntimeError("Socket connection broken")
-                total_sent += sent
+                    return False
+                totalSent += sent
             except OSError as e:
                 logging.error(f"action: send_message | result: fail | error: {e}")
                 return False
@@ -138,4 +138,4 @@ class Server:
     def __signal_handler(self, signum, frame):
         signame = signal.Signals(signum).name
         logging.info(f"action: exit | result: success | signal: {signame}")
-        self.server_is_alive = False
+        self.serverIsAlive = False
