@@ -474,7 +474,7 @@ func (c *Client) recvWinners() []byte {
 func (c *Client) closeClient() {
 	if c.conn != nil {
 		log.Infof("action: exit | result: success | client_id: %v", c.config.ID)
-		time.Sleep(1 * time.Second)
+		time.Sleep(5 * time.Second)
 		c.conn.Close()
 	}
 }
