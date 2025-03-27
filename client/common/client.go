@@ -382,7 +382,6 @@ func (c *Client) handleWaitForResult() {
 			log.Criticalf("action: create_socket | result: fail | error: %v", err)
 			return
 		}
-		time.Sleep(5 * time.Second)
 		c.config.Phase = CODE_RESULT
 		return
 	}
@@ -474,7 +473,7 @@ func (c *Client) recvWinners() []byte {
 func (c *Client) closeClient() {
 	if c.conn != nil {
 		log.Infof("action: exit | result: success | client_id: %v", c.config.ID)
-		time.Sleep(5 * time.Second)
+		time.Sleep(1 * time.Second)
 		c.conn.Close()
 	}
 }

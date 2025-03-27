@@ -19,7 +19,6 @@ class Server:
         self._server_socket.listen(listen_backlog)
         self.serverIsAlive = True
         self.winners = None
-        self.clients = set()
         self.waiting_clients = set()
         self.max_agencies = clients
 
@@ -84,10 +83,10 @@ class Server:
     def __handle_batch(self, client_sock):
         (batch, failed_bets) = self.recv_batch(client_sock)
         if failed_bets > 0:
-            logging.error(f"action: receive_batch | result: fail | error: {failed_bets}")
+            logging.error(f"action: apuesta_recibida | result: fail | error: {failed_bets}")
             response = f'FAIL;{len(batch)}'.encode('utf-8')
         else:
-            logging.info(f"action: receive_batch | result: success | cantidad: {len(batch)}")
+            logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(batch)}")
             response = f'SUCCESS;{len(batch)}'.encode('utf-8')
         utils.store_bets(batch)
         response_len = f"{len(response):04d}".encode('utf-8')
@@ -206,7 +205,6 @@ class Server:
         try:
             logging.info('action: accept_connections | result: in_progress')
             c, addr = self._server_socket.accept()
-            self.clients.add(c)
             logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
             return c
         except OSError:
