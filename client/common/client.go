@@ -377,6 +377,11 @@ func (c *Client) handleWaitForResult() {
 		log.Criticalf("action: read_winners | result: fail")
 		return
 	}
+	if len(listWinner) == 0 {
+		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: 0")
+		c.config.Phase = CODE_END
+		return
+	}
 	listWinnerStr := strings.Split(string(listWinner), ";")
 	log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", len(listWinnerStr))
 	c.config.Phase = CODE_END
@@ -448,6 +453,10 @@ func (c *Client) recvWinners() []byte {
 		return nil
 	}
 
+	if size == 0 {
+		return []byte{}
+	}
+
 	data := c.recv(size)
 	if data == nil {
 		log.Criticalf("action: read_winners | result: fail")
@@ -458,7 +467,7 @@ func (c *Client) recvWinners() []byte {
 }
 
 func (c *Client) closeClient() {
-	time.Sleep(10 * time.Second)
+	time.Sleep(5 * time.Second)
 	if c.conn != nil {
 		log.Infof("action: exit | result: success | client_id: %v", c.config.ID)
 		c.conn.Close()
