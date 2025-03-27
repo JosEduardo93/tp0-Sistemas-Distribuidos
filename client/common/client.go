@@ -25,6 +25,7 @@ const (
 	CODE_END             = 'E'
 	CODE_WINNER          = 'S'
 	SIZE_HEADER          = 4
+	SIZE_CODE            = 1
 )
 
 // ClientConfig Configuration used by the client
@@ -93,47 +94,29 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
-func (c *Client) sendOne(b byte) int {
-	n, err := c.conn.Write([]byte{b})
-	if err != nil {
-		log.Criticalf("action: send_message | result: fail | error: %v", err)
-		return 0
-	}
-	return n
-}
-
 func (c *Client) send(data []byte, size int) int {
 	totalSend := 0
 	for totalSend < size {
-		n := c.sendOne(data[totalSend])
-		if n == 0 {
-			return totalSend
+		n, err := c.conn.Write(data[totalSend:])
+		if err != nil {
+			log.Criticalf("action: send_message | result: fail | error: %v", err)
+			return 0
 		}
 		totalSend += n
 	}
 	return totalSend
 }
 
-func (c *Client) recvOne() (byte, error) {
-	buf := make([]byte, 1)
-	_, err := c.conn.Read(buf)
-	if err != nil {
-		return 0, err
-	}
-	return buf[0], nil
-}
-
 func (c *Client) recv(size int) []byte {
 	data := make([]byte, size)
 	totalRecv := 0
 	for totalRecv < size {
-		b, err := c.recvOne()
+		n, err := c.conn.Read(data[totalRecv:])
 		if err != nil {
 			log.Criticalf("action: receive_message | result: fail | error: %v", err)
 			return nil
 		}
-		data[totalRecv] = b
-		totalRecv++
+		totalRecv += n
 	}
 	return data
 }
@@ -250,6 +233,15 @@ func (c *Client) createBatch(reader *bufio.Reader) ([]byte, bool) {
 
 // StartClientLoop Send messages to the client until some time threshold is met
 func (c *Client) StartClientLoop() {
+
+	// There is an autoincremental msgID to identify every message sent
+	// Messages if the message amount threshold has not been surpassed
+	if err := c.createClientSocket(); err != nil {
+		log.Criticalf("action: create_socket | result: fail | error: %v", err)
+		return
+	}
+	defer c.closeClient()
+
 	// Open file and send messages to the server
 	filename := fmt.Sprintf("agency-%s.csv", c.config.ID)
 	file, err := os.Open(filename)
@@ -260,15 +252,6 @@ func (c *Client) StartClientLoop() {
 	defer file.Close()
 
 	fileReader := bufio.NewReader(file)
-
-	// There is an autoincremental msgID to identify every message sent
-	// Messages if the message amount threshold has not been surpassed
-
-	if err := c.createClientSocket(); err != nil {
-		log.Criticalf("action: create_socket | result: fail | error: %v", err)
-		return
-	}
-	defer c.closeClient()
 
 	for {
 		// 	// Create the connection the server in every loop iteration. Send an
@@ -329,7 +312,7 @@ func (c *Client) handleBatch(reader *bufio.Reader) {
 		return
 	}
 
-	n := c.sendOne(CODE_BATCH)
+	n := c.send([]byte{CODE_BATCH}, SIZE_CODE)
 	if n == 0 {
 		log.Errorf("action: send_message_code_batch | result: fail | client_id: %v",
 			c.config.ID,
@@ -356,12 +339,12 @@ func (c *Client) handleBatch(reader *bufio.Reader) {
 }
 
 func (c *Client) handleWaitForResult() {
-	code, err := c.recvOne()
-	if err != nil {
-		log.Criticalf("action: read_code | result: fail | error: %v", err)
+	code := c.recv(SIZE_CODE)
+	if code == nil {
+		log.Criticalf("action: read_code | result: fail ")
 		return
 	}
-	if code == CODE_WAIT_FOR_RESULT {
+	if code[0] == CODE_WAIT_FOR_RESULT {
 		c.config.Phase = CODE_RESULT
 		return
 	}
@@ -381,7 +364,7 @@ func (c *Client) handleWaitForResult() {
 }
 
 func (c *Client) handleResult() {
-	n := c.send([]byte{CODE_RESULT}, 1)
+	n := c.send([]byte{CODE_RESULT}, SIZE_CODE)
 	if n != 1 {
 		log.Criticalf("action: send_message_result | result: fail")
 		return
@@ -395,7 +378,7 @@ func (c *Client) handleResult() {
 }
 
 func (c *Client) handleCloseConnection() {
-	n := c.sendOne(CODE_END)
+	n := c.send([]byte{CODE_END}, SIZE_CODE)
 	if n == 0 {
 		log.Criticalf("action: send_message_end | result: fail")
 	}

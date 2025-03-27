@@ -96,7 +96,10 @@ class Server:
         else:
             logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(batch)}")
             response = f'SUCCESS;{len(batch)}'.encode('utf-8')
-        utils.store_bets(batch)
+        
+        with self.bets_lock:
+            utils.store_bets(batch)
+        
         response_len = f"{len(response):04d}".encode('utf-8')
         self.__send_all(client_sock, response_len)
         self.__send_all(client_sock, response)
