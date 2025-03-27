@@ -3,6 +3,8 @@ import logging
 import signal
 from common import utils
 
+SIZE_BATCH = 8 * 1024
+
 class Server:
     def __init__(self, port, listen_backlog):
         # Initialize server socket
@@ -10,7 +12,7 @@ class Server:
         self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
-        self.server_is_alive = True
+        self.serverIsAlive = True
 
     def run(self):
         """
@@ -27,7 +29,7 @@ class Server:
         signal.signal(signal.SIGTERM, self.__signal_handler)
         signal.signal(signal.SIGINT, self.__signal_handler)
 
-        while self.server_is_alive:
+        while self.serverIsAlive:
             try:
                 client_sock = self.__accept_new_connection()
                 if client_sock:
@@ -48,14 +50,14 @@ class Server:
         try:
             # TODO: Modify the receive to avoid short-reads
             addr = client_sock.getpeername()
-            all_bets = []
-            failed_bets = 0
+            allBets = []
+            failedBets = 0
             while True:
-                (bets, batch_failed) = self.recv_batches(client_sock)
+                (bets, batchFailed) = self.recv_batches(client_sock)
                 if not bets:
                     break
-                if failed_bets > 0:
-                    logging.error(f"action: apuesta_recibida | result: fail | cantidad: {batch_failed}")
+                if failedBets > 0:
+                    logging.error(f"action: apuesta_recibida | result: fail | cantidad: {batchFailed}")
                     response = f'FAIL;{len(bets)}'.encode('utf-8')
                 else :
                     logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
@@ -65,9 +67,9 @@ class Server:
                 response_len = f"{len(response):04d}".encode('utf-8')
                 self.__send_all(client_sock, response_len)
                 self.__send_all(client_sock, response)
-                all_bets.extend(bets)
-                failed_bets += batch_failed
-                if not bets and batch_failed == 0:
+                allBets.extend(bets)
+                failedBets += batchFailed
+                if not bets and batchFailed == 0:
                     break
 
         except OSError as e:
@@ -82,34 +84,34 @@ class Server:
             return None, 0
         
         buffer = bytearray()
-        message_size = int(header)
+        messageSize = int(header)
         received_bytes = 0
-        failed_bets = 0
+        failedBets = 0
         bets = []
 
-        while received_bytes < message_size:
-            chunk = client_sock.recv(min(1024, message_size - received_bytes))
+        while received_bytes < messageSize:
+            chunk = client_sock.recv(min(SIZE_BATCH, messageSize - received_bytes))
             if not chunk:
                 logging.error(f"action: receive_message | result: fail | error: connection-lost")
                 return None, 0
             buffer.extend(chunk)
             received_bytes += len(chunk)
             
-        batch_data = buffer.decode('utf-8').strip()
-        batch_list = batch_data.split('\n')
+        batchData = buffer.decode('utf-8').strip()
+        batchList = batchData.split('\n')
 
-        for batch in batch_list:
+        for batch in batchList:
             if batch.strip() == "END":
                 logging.info(f"action: receive_end_batch | result: success ")
                 break
-            batch_bets = batch.split('|')
-            for b in batch_bets:
+            batchBets = batch.split('|')
+            for b in batchBets:
                 bet = b.split(';')
                 if len(bet) == 6:
                     bets.append(utils.Bet(*bet))
                 else:
-                    failed_bets += 1
-        return bets, failed_bets
+                    failedBets += 1
+        return bets, failedBets
     
     def __recv_all(self, sock, size):
         data = b''
@@ -117,7 +119,7 @@ class Server:
             try:
                 chunk = sock.recv(size - len(data))
                 if not chunk:
-                    raise RuntimeError("Socket connection broken")
+                    return None
                 data += chunk
             except OSError as e:
                 logging.error(f"action: receive_message | result: fail | error: {e}")
@@ -125,13 +127,13 @@ class Server:
         return data
 
     def __send_all(self, sock, data):
-        total_sent = 0
-        while total_sent < len(data):
+        totalSent = 0
+        while totalSent < len(data):
             try:
-                sent = sock.send(data[total_sent:])
+                sent = sock.send(data[totalSent:])
                 if sent == 0:
-                    raise RuntimeError("Socket connection broken")
-                total_sent += sent
+                    return False
+                totalSent += sent
             except OSError as e:
                 logging.error(f"action: send_message | result: fail | error: {e}")
                 return False
@@ -156,4 +158,4 @@ class Server:
     def __signal_handler(self, signum, frame):
         signame = signal.Signals(signum).name
         logging.info(f"action: exit | result: success | signal: {signame}")
-        self.server_is_alive = False
+        self.serverIsAlive = False
