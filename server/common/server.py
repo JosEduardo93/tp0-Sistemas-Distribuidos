@@ -11,7 +11,7 @@ CODE_WAIT = b'W'
 CODE_WINNER = b'S'
 
 class Server:
-    def __init__(self, port, listen_backlog):
+    def __init__(self, port, listen_backlog, clients):
         # Initialize server socket
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -21,7 +21,7 @@ class Server:
         self.winners = None
         self.clients = set()
         self.waiting_clients = set()
-        self.max_agencies = listen_backlog
+        self.max_agencies = clients
 
     def run(self):
         """
@@ -59,8 +59,6 @@ class Server:
         try:
             # TODO: Modify the receive to avoid short-reads
             addr = client_sock.getpeername()
-            logging.info(f"action: receive_message | result: in_progress | ip: {addr}")
-
             while True:
                 code = self.__recv_all(client_sock, 1)
                 if code == CODE_END:
@@ -76,16 +74,6 @@ class Server:
             self.__handle_batch(client_sock)
         elif code == CODE_RESULT:
             self.__handle_result(client_sock)
-    #     if code == CODE_AGENCY:
-    #         self.__handle_agency(client_sock)
-
-    # def __handle_agency(self, client_sock):
-    #     idAgency = self.recv_id_agency(client_sock)
-    #     if not idAgency:
-    #         logging.error(f"action: receive_agency | result: fail | error: unknown agency")
-    #         return
-        
-    #     self.clients.add(idAgency)
 
     def recv_id_agency(self, client_sock) -> int:
         idAgency = self.__recv_all(client_sock, 1)
@@ -121,9 +109,8 @@ class Server:
             return
         
         self.waiting_clients.add(idAgency)
-        logging.info(f"action: wait_for_sorteo | result: in_progress | id_agency: {idAgency} | agencies: {len(self.waiting_clients)}/{len(self.clients)}")
         
-        if len(self.waiting_clients) in range(3, 5):
+        if len(self.waiting_clients) == self.max_agencies:
             logging.info("action: sorteo | result: success")
             allBets = utils.load_bets()
             self.winners = {}

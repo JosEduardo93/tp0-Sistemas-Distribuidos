@@ -1,7 +1,7 @@
 import sys
 
 def main(output_file, clients):
-    base_compose = """
+    base_compose = f"""
     name: tp0
     services:
         server:
@@ -10,6 +10,7 @@ def main(output_file, clients):
             entrypoint: python3 /main.py
             environment:
                 - PYTHONUNBUFFERED=1
+                - CLIENTS={clients}
             volumes:
                 - ./server/config.ini:/config.ini:ro
             networks:

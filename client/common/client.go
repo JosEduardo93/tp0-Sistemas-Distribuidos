@@ -376,13 +376,13 @@ func (c *Client) handleWaitForResult() {
 		return
 	}
 	if code == CODE_WAIT_FOR_RESULT {
-		log.Infof("action: wait_for_result | code: %s | client_id: %v ", string(code), c.config.ID)
 		c.handleCloseConnection()
 		c.closeClient()
 		if err := c.createClientSocket(); err != nil {
 			log.Criticalf("action: create_socket | result: fail | error: %v", err)
 			return
 		}
+		time.Sleep(5 * time.Second)
 		c.config.Phase = CODE_RESULT
 		return
 	}

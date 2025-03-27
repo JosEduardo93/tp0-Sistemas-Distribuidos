@@ -7,6 +7,7 @@
             entrypoint: python3 /main.py
             environment:
                 - PYTHONUNBUFFERED=1
+                - CLIENTS=3
             volumes:
                 - ./server/config.ini:/config.ini:ro
             networks:
@@ -18,11 +19,6 @@
             entrypoint: /client
             environment:
                 - CLI_ID=1
-                - CLI_NOMBRE=Santiago Lionel
-                - CLI_APELLIDO=Lorca
-                - CLI_DOCUMENTO=30904465
-                - CLI_NACIMIENTO=1999-03-17
-                - CLI_NUMERO=7574
             volumes:
                 - ./client/config.yaml:/config.yaml:ro
                 - ./.data/agency-1.csv:/agency-1.csv:ro
@@ -37,14 +33,23 @@
             entrypoint: /client
             environment:
                 - CLI_ID=2
-                - CLI_NOMBRE=Santiago Lionel
-                - CLI_APELLIDO=Lorca
-                - CLI_DOCUMENTO=30904465
-                - CLI_NACIMIENTO=1999-03-17
-                - CLI_NUMERO=7574
             volumes:
                 - ./client/config.yaml:/config.yaml:ro
                 - ./.data/agency-2.csv:/agency-2.csv:ro
+            networks:
+                - testing_net
+            depends_on:
+                - server
+        
+        client3:
+            container_name: client3
+            image: client:latest
+            entrypoint: /client
+            environment:
+                - CLI_ID=3
+            volumes:
+                - ./client/config.yaml:/config.yaml:ro
+                - ./.data/agency-3.csv:/agency-3.csv:ro
             networks:
                 - testing_net
             depends_on:
