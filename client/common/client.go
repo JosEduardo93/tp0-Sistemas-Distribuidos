@@ -23,6 +23,7 @@ const (
 	CODE_WAIT_FOR_RESULT = 'W'
 	CODE_RESULT          = 'R'
 	CODE_END             = 'E'
+	CODE_WINNER          = 'S'
 	SIZE_HEADER          = 4
 )
 
@@ -271,10 +272,10 @@ func (c *Client) StartClientLoop() {
 
 	finishedLotery := false
 
-	if error := c.sendCodeAgency(); error {
-		log.Errorf("action: send_code_agency | result: fail | client: %v", c.config.ID)
-		return
-	}
+	// if error := c.sendCodeAgency(); error {
+	// 	log.Errorf("action: send_code_agency | result: fail | client: %v", c.config.ID)
+	// 	return
+	// }
 
 	for !finishedLotery {
 		// 	// Create the connection the server in every loop iteration. Send an
@@ -291,10 +292,6 @@ func (c *Client) StartClientLoop() {
 }
 
 func (c *Client) sendCodeAgency() bool {
-	if n := c.sendOne(CODE_AGENCY); n == 0 {
-		log.Criticalf("action: send_message_code_agency | result: fail")
-		return true
-	}
 	// Send size len data
 	sizeData := fmt.Sprintf("%04d", len(c.config.ID))
 	result := c.send([]byte(sizeData), SIZE_HEADER)
@@ -362,7 +359,22 @@ func (c *Client) handleBatch(reader *bufio.Reader) {
 }
 
 func (c *Client) handleWaitForResult() {
-	log.Infof("action: wait_for_result | client_id: %v", c.config.ID)
+	code, err := c.recvOne()
+	if err != nil {
+		log.Criticalf("action: read_code | result: fail | error: %v", err)
+		return
+	}
+	if code != CODE_WINNER {
+		log.Infof("action: wait_for_result | code: %s | client_id: %v ", string(code), c.config.ID)
+		c.conn.Close()
+		time.Sleep(3 * time.Second)
+		if err := c.createClientSocket(); err != nil {
+			log.Criticalf("action: create_socket | result: fail | error: %v", err)
+			return
+		}
+		c.config.Phase = CODE_RESULT
+		return
+	}
 	listWinner := c.recvWinners()
 	if listWinner == nil {
 		log.Criticalf("action: read_winners | result: fail")
@@ -376,6 +388,11 @@ func (c *Client) handleResult() {
 	n := c.sendOne(CODE_RESULT)
 	if n == 0 {
 		log.Criticalf("action: send_message_result | result: fail")
+	}
+	error := c.sendCodeAgency()
+	if error {
+		log.Criticalf("action: send_code_agency | result: fail")
+		return
 	}
 	c.config.Phase = CODE_WAIT_FOR_RESULT
 }
