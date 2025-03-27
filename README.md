@@ -4,6 +4,24 @@ En el presente repositorio se provee un esqueleto básico de cliente/servidor, e
 
  El cliente (Golang) y el servidor (Python) fueron desarrollados en diferentes lenguajes simplemente para mostrar cómo dos lenguajes de programación pueden convivir en el mismo proyecto con la ayuda de containers, en este caso utilizando [Docker Compose](https://docs.docker.com/compose/).
 
+- [Instrucciones de uso](#instrucciones-de-uso)
+  - [Servidor](#servidor)
+  - [Cliente](#cliente)
+  - [Ejemplo](#ejemplo)
+- [Parte 1: Introducción a Docker](#parte-1-introducción-a-docker)
+- [Parte 2: Repaso de comunicaciones](#parte-2-repaso-de-comunicaciones)
+- [Parte 3: Repaso de concurrencia](#parte-3-repaso-de-concurrencia)
+- [Condiciones de entrega](#condiciones-de-entrega)
+- [Resolución]
+  - [Ejercicio 1](#ejercicio-1)
+  - [Ejercicio 2](#ejercicio-2)
+  - [Ejercicio 3](#ejercicio-3)
+  - [Ejercicio 4](#ejercicio-4)
+  - [Ejercicio 5](#ejercicio-5)
+  - [Ejercicio 6](#ejercicio-6)
+  - [Ejercicio 7](#ejercicio-7)
+  - [Ejercicio 8](#ejercicio-8)
+
 ## Instrucciones de uso
 El repositorio cuenta con un **Makefile** que incluye distintos comandos en forma de targets. Los targets se ejecutan mediante la invocación de:  **make \<target\>**. Los target imprescindibles para iniciar y detener el sistema son **docker-compose-up** y **docker-compose-down**, siendo los restantes targets de utilidad para el proceso de depuración.
 
@@ -178,3 +196,161 @@ Se espera que se redacte una sección del README en donde se indique cómo ejecu
 Se proveen [pruebas automáticas](https://github.com/7574-sistemas-distribuidos/tp0-tests) de caja negra. Se exige que la resolución de los ejercicios pase tales pruebas, o en su defecto que las discrepancias sean justificadas y discutidas con los docentes antes del día de la entrega. El incumplimiento de las pruebas es condición de desaprobación, pero su cumplimiento no es suficiente para la aprobación. Respetar las entradas de log planteadas en los ejercicios, pues son las que se chequean en cada uno de los tests.
 
 La corrección personal tendrá en cuenta la calidad del código entregado y casos de error posibles, se manifiesten o no durante la ejecución del trabajo práctico. Se pide a los alumnos leer atentamente y **tener en cuenta** los criterios de corrección informados  [en el campus](https://campusgrado.fi.uba.ar/mod/page/view.php?id=73393).
+
+## Resolución
+
+### Ejercicio 1
+
+Para la resolucion de este ejercicio se creo el script `./generar-compose.sh` el cual tenia un subscript hecho en python el cual tenia como finalidad generar una estructura de docker-compose, similar al archivo por defecto en la base del tp, con la diferencia que al script de bash se le tiene que pasar la cantidad de clientes a generar y el nombre del archivo que para que funcione adecuadamente todo el tp debe ser `docker-compose-dev.yaml`.
+
+Siendo el formato de uso:
+```bash
+./generar-compose.sh <FILENAME> <CANT_CLIENTS>
+
+# Ejemplo
+./generar-compose.sh docker-compose-dev.yaml 3
+```
+
+### Ejercicio 2
+
+Este ejercicio tenia la particularidad de que el archivo de configuración debe ser inyectada al contenedor, para lograr eso se tuvo que agregar una apartado en la generación del docker-compose del ejercicio anterior tanto para el cliente como para el servidor. de la siguiente manera:
+
+```
+    server:
+        container_name: server
+        image: server:latest
+        entrypoint: python3 /main.py
+        environment:
+            - PYTHONUNBUFFERED=1
+        volumes:
+            - ./server/config.ini:/config.ini:ro
+        networks:
+            - testing_net
+
+    client1:
+        container_name: client1
+        image: client:latest
+        entrypoint: /client
+        environment:
+            - CLI_ID=1
+        volumes:
+            - ./client/config.yaml:/config.yaml:ro
+        networks:
+            - testing_net
+        depends_on:
+            - server
+
+```
+
+Siendo que la primera parte (*antes de* `:`) indica la direcció*n del archivo que se debe inyectar y la segunda parte la direccion donde se debe guardar el archivo en el contenedor. Por ultimo se agrega un flag al archivo de solo lectura `:ro`
+
+### Ejercicio 3
+
+Para este ejercicio se armo un nuevo script bash `validar-echo-server.sh` el cual probaba que el servidor recibiera un mensaje y devolviera el mismo mensaje. El cual se ejecuta simplemente, teniendo levantado el servidor usando `make docker-compose-up` y despues ejecutar el script en una terminal.
+
+Para esto se uso Netcat, a través de un contenedor de docker y que se comunica a través de la `network` del server, usando la siguiente linea de comando en el script
+
+```bash
+RESPONSE=$(docker run --rm --network=$SERVER_NETWORK busybox sh -c "printf '$TEST_MESSAGE\n' | nc -w 1 $SERVER_CONTAINER $SERVER_PORT")
+
+```
+
+Primero se creaba un contenedor que se conectara a la `network` y se ejecutaba netcat pasando los datos del contenedor al que se conectará dentro de la network (server) asi como también el puerto, para después enviar el mensaje que se enviará al servidor, por último se guarda la respuesta del servidor y se verifica si la respuesta es igual al mensaje enviado y se imprime un mensaje dependiendo del resultado.
+
+
+### Ejercicio 4
+
+Para este ejercicio se hizo uso de signals tanto para el servidor como para el cliente, esto para que ambos se cerraran al recibir esta señal, en este caso se usa la señal `SIGTERM`.
+
+
+Para el servidor, se agrego una linea que maneje las señales y la función que deje ejecutar al recibirla. Además de un bool que finaliza el loop principal de aceptación de conexiones:
+
+```python
+signal.signal(signal.SIGTERM, self.__signal_handler)
+
+def __signal_handler(self, signum, frame)
+    signame = signal.Signals(signum).name
+    logging.info(f"action: exit | result: success | signal: {signame}")
+    self.server_is_alive = False
+
+```
+
+Por otro lado para el cliente, se agrego un nuevo atributo de quit que controle la salida del cliente a través de la señal recibida:
+
+```go
+    client:= &Client {
+        config: config
+        quit: make(chan os.Signal, 1)
+    }
+    signal.Notify(client.quit, syscall.SIGINT, syscall.SIGTERM)
+```
+
+Además en el bucle principal de envio de mensaje se controlaba si se habia enviado la señal y con se realizaba el cierre del socket del cliente
+
+Para probar el correcto funcionamiento de los cierres del servidor y el cliente primero se deben levantar los contenedores a través de `make docker-compose-up` e inmediatamente darle de baja a través del comando `make docker-compose-down`
+
+### Ejercicio 5
+
+Para este ejercicio se agregaron variables de entorno al script de generator-compose con los datos de la apuesta realizada al cliente para que los pueda leer y enviar al servidor para ser procesados, donde el servidor devolverá el dni y numero de la apuesta. Antes de realizar las pruebas se debe generar nuevamente el docker-compose a traves del script generator
+
+Para evitar el fenomeno de `short write` y `short read`, el cliente envia un primer mensaje de 4 bytes con la el tamaño del mensaje de la apuesta, y el segundo mensaje con la apuesta en si.
+
+El servidor hace exactamente lo mismo al responder enviando 4 bytes del tamaño del mensaje y despues enviando el mensaje.
+
+Siendo este la primera version de un protocolo:
+
+```
+    | -4bytes- | | -len(message)- |
+    < size msg > <     message    > 
+```
+
+### Ejercicio 6
+
+Usando la base del protocolo del ejercicio anterior se procedio a inyectar el archivo `.csv` a traves del generator compose, similar al ejercicio 2 con el archivo de config, quedando la linea agregada: `- ./.data/agency-1.csv:/agency-1.csv:ro`
+
+Ahora el cliente debe poder enviar mensaje a traves de batch o chunks de información para esto se leia el archivo hasta que la cantidad maxima permitida (8 Kb) o la cantidad de apuestas se cumpla primero para armar el batch a enviar.`
+
+El servidor por su parte procesa los batch hasta que el cliente explicitamente envie `END\n` que indica el final del envio de batch.
+
+Para que funcione se debe generar el docker-compose y levantar los contenedores a través de docker.
+
+### Ejercicio 7
+
+Para este ejercicio usando lo anterior en lectura y envio de batch de parte del cliente, este tuvo que ser modificado para que indique su estado a través de codigos al server. Lo cual daba mejor manejo a la hora de recibir los mensajes.
+
+Ahora al protocolo anterior se le agrega un codigo de la siguiente manera:
+
+```
+    |- 1byte-|  | -4bytes- | | -len(message)- |
+    <  code  >  < size msg > <     message    > 
+```
+
+Siendo los codigos:
+```
+    CODE_BATCH           = 'B'
+	CODE_WAIT_FOR_RESULT = 'W'
+	CODE_RESULT          = 'R'
+	CODE_END             = 'E'
+	CODE_WINNER          = 'S'
+```
+
+Exceptuando por el CODE_RESULT que es donde el protocolo tiene una diferencia por que al mensaje se le agrega un byte adicional para indicar el id de la agencia, quedando de la siguiente manera:
+
+```
+    |- 1 byte -| |-  1 byte -|  | -4bytes- | | -len(message)- |
+    <   code   > < ID Agency >  < size msg > <     message    > 
+```
+
+Por otro lado el cliente en la etapa de Result puede solo recibir 1 byte que indica el estado del sorteo si es CODE_WAIT_FOR_RESULT, el cliente envia un mensaje CODE_END al server indicando que se desconecta para esperar por la terminacion del sorteo (Método polling) y volver a conectar pasado un tiempo para chequear si ya esta terminado el sorteo. Esto permite que el servidor pueda procesar a los demás clientes de forma secuencial hasta llegar a poder realizar el sorteo y enviar los ganadores a cada agencia en espera.
+
+### Ejercicio 8
+
+Para este ejercicio el servidor cambio su forma de procesar los clientes de forma secuencial aprovechando la desconexión de los clientes a procesarlos de manera secuencial a través de multiprocesos. 
+
+Al hacer eso se debe crear procesos para cada cliente que se conecta y sincronizarlos hasta que la cantidad de clientes necesarios para realizar el sorteo sea alcanzada. Esto se logra mediante una barrera, la cual ejecuta una action a ser realizada cuando se alcanza la cantidad.
+
+```python
+self.barrier = multiprocessing.Barrier(clients, action=self.__handle_sorteo)
+```
+
+Por el lado del cliente se elimino la desconexión para simplemente hacer polling del resultado, hasta que el servidor realice el sorteo y envie los datos de respuesta.
