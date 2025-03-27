@@ -362,13 +362,6 @@ func (c *Client) handleWaitForResult() {
 		return
 	}
 	if code == CODE_WAIT_FOR_RESULT {
-		c.handleCloseConnection()
-		time.Sleep(1 * time.Second)
-		c.closeClient()
-		if err := c.createClientSocket(); err != nil {
-			log.Criticalf("action: create_socket | result: fail | error: %v", err)
-			return
-		}
 		c.config.Phase = CODE_RESULT
 		return
 	}

@@ -2,6 +2,7 @@ import socket
 import logging
 import signal
 from common import utils
+import multiprocessing
 
 CODE_AGENCY = b'A'
 CODE_BATCH = b'B'
@@ -19,9 +20,13 @@ class Server:
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
         self.serverIsAlive = True
-        self.winners = None
-        self.waiting_clients = set()
         self.max_agencies = clients
+
+        self.manager = multiprocessing.Manager()
+        self.winners = self.manager.dict()
+        self.finished_agencies = self.manager.list()
+        self.bets_lock = multiprocessing.Lock()
+        self.barrier = multiprocessing.Barrier(clients, action=self.__handle_sorteo)
 
     def run(self):
         """
@@ -42,7 +47,10 @@ class Server:
             try:
                 client_sock = self.__accept_new_connection()
                 if client_sock:
-                    self.__handle_client_connection(client_sock)
+                    client_process = multiprocessing.Process(target=self.__handle_client_connection, args=(client_sock,))
+                    client_process.daemon = True
+                    client_process.start()
+                    client_sock.close()
             except OSError as e:
                 logging.error(f"action: accept_connections | result: fail | error: {e}")
                 break
@@ -99,41 +107,40 @@ class Server:
             logging.error(f"action: receive_result | result: fail | error: unknown agency")
             return
         
-        if self.winners is not None:
-            self.__send_winners(client_sock, idAgency)
-            return
+        with self.bets_lock:
+            if idAgency not in self.finished_agencies:
+                self.finished_agencies.append(idAgency)
 
-        if idAgency in self.waiting_clients:
-            self.__send_all(client_sock, CODE_WAIT)
-            return
+        try:
+            self.barrier.wait()
+            winnersList = self.winners.get(idAgency, [])
+            self.__send_winners(client_sock, winnersList, idAgency)
         
-        self.waiting_clients.add(idAgency)
-        
-        if len(self.waiting_clients) == self.max_agencies:
-            logging.info("action: sorteo | result: success")
-            allBets = utils.load_bets()
-            self.winners = {}
-            for bet in allBets:
-                if utils.has_won(bet):
-                    if bet.agency not in self.winners:
-                        self.winners[bet.agency] = []
-                    self.winners[bet.agency].append(bet.document)
-            
-        if self.winners is not None:
-            self.__send_winners(client_sock, idAgency)
-        else:
+        except multiprocessing.BrokenBarrierError:
             self.__send_all(client_sock, CODE_WAIT)
+
+    def __handle_sorteo(self):
+        logging.info("action: sorteo | result: success")
+        allBets = utils.load_bets()
+        winners = {}
+        for bet in allBets:
+            if utils.has_won(bet):
+                if bet.agency not in winners:
+                    winners[bet.agency] = []
+                winners[bet.agency].append(bet.document)
+
+        for agency, documents in winners.items():
+            self.winners[agency] = documents  
     
-    def __send_winners(self, client_sock, agency_id):
-        self.__send_all(client_sock, CODE_WINNER)
-        winnersList = self.winners.get(agency_id, [])
+    def __send_winners(self, client_sock, winnersList, idAgency):
         winnersData = ";".join(map(str, winnersList)).encode("utf-8")
+        self.__send_all(client_sock, CODE_WINNER)
 
         responseLen = f"{len(winnersData):04d}".encode('utf-8')
         self.__send_all(client_sock, responseLen)
         self.__send_all(client_sock, winnersData)
 
-        logging.info(f"action: send_winners | result: success | agency: {agency_id}")
+        logging.info(f"action: send_winners | result: success | agency: {idAgency}")
 
     def recv_batch(self, client_sock) -> tuple[list, int]:
         header = self.__recv_all(client_sock, 4)
