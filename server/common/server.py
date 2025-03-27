@@ -77,7 +77,6 @@ class Server:
     def recv_id_agency(self, client_sock) -> int:
         idAgency = self.__recv_all(client_sock, 1)
         idAgency = int(idAgency)
-        logging.info(f"action: receive_agency | result: success | id: {idAgency}")
         return idAgency
 
     def __handle_batch(self, client_sock):
@@ -105,6 +104,7 @@ class Server:
 
         if idAgency in self.waiting_clients:
             self.__send_all(client_sock, CODE_WAIT)
+            client_sock.close()
             return
         
         self.waiting_clients.add(idAgency)

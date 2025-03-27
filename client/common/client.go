@@ -369,14 +369,13 @@ func (c *Client) handleBatch(reader *bufio.Reader) {
 }
 
 func (c *Client) handleWaitForResult() {
-	log.Infof("action: wait_for_result | client_id: %v", c.config.ID)
 	code, err := c.recvOne()
 	if err != nil {
 		log.Criticalf("action: read_code | result: fail | error: %v", err)
 		return
 	}
 	if code == CODE_WAIT_FOR_RESULT {
-		c.handleCloseConnection()
+		// c.handleCloseConnection()
 		c.closeClient()
 		if err := c.createClientSocket(); err != nil {
 			log.Criticalf("action: create_socket | result: fail | error: %v", err)
