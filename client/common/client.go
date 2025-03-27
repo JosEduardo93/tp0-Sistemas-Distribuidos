@@ -376,7 +376,7 @@ func (c *Client) handleWaitForResult() {
 	}
 	if code == CODE_WAIT_FOR_RESULT {
 		c.handleCloseConnection()
-		time.Sleep(10 * time.Second)
+		time.Sleep(20 * time.Second)
 		c.closeClient()
 		if err := c.createClientSocket(); err != nil {
 			log.Criticalf("action: create_socket | result: fail | error: %v", err)
