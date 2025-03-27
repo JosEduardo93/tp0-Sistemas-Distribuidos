@@ -12,7 +12,7 @@ En el presente repositorio se provee un esqueleto básico de cliente/servidor, e
 - [Parte 2: Repaso de comunicaciones](#parte-2-repaso-de-comunicaciones)
 - [Parte 3: Repaso de concurrencia](#parte-3-repaso-de-concurrencia)
 - [Condiciones de entrega](#condiciones-de-entrega)
-- [Resolución]
+- [Resolución](#resolución)
   - [Ejercicio 1](#ejercicio-1)
   - [Ejercicio 2](#ejercicio-2)
   - [Ejercicio 3](#ejercicio-3)
