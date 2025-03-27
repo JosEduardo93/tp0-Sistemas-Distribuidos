@@ -9,6 +9,7 @@ CODE_RESULT = b'R'
 CODE_END = b'E'
 CODE_WAIT = b'W'
 CODE_WINNER = b'S'
+SIZE_BATCH = 8 * 1024
 
 class Server:
     def __init__(self, port, listen_backlog, clients):
@@ -147,7 +148,7 @@ class Server:
         bets = []
 
         while receivedBytes < messageSize:
-            chunk = client_sock.recv(min(1024, messageSize - receivedBytes))
+            chunk = client_sock.recv(min(SIZE_BATCH, messageSize - receivedBytes))
             if not chunk:
                 logging.error(f"action: receive_message | result: fail | error: connection-lost")
                 return None, 0
